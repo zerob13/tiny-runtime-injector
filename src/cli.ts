@@ -13,7 +13,7 @@ program
   .name("tiny-runtime-injector")
   .description("下载并配置最小化的 Node.js 运行时")
   .version("1.0.0")
-  .option("-v, --version <version>", "Node.js 版本", "v22.9.0")
+  .option("-n, --node-version <version>", "Node.js 版本", "v22.9.0")
   .option("-d, --dir <directory>", "目标目录", "./runtime/node")
   .option("-p, --platform <platform>", "目标平台")
   .option("-a, --arch <architecture>", "目标架构")
@@ -45,7 +45,7 @@ async function main() {
     // 合并命令行参数和配置文件
     const runtimeOptions = {
       ...config,
-      version: options.version,
+      version: options.nodeVersion,
       targetDir: options.dir,
       platform: options.platform,
       arch: options.arch,
@@ -70,4 +70,5 @@ async function main() {
   }
 }
 
+// 直接执行主函数
 main();
