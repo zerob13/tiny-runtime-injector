@@ -5,7 +5,7 @@ import { promisify } from "util";
 import { exec } from "child_process";
 import axios from "axios";
 import { createWriteStream } from "fs";
-import { pipeline } from "stream";
+import { pipeline } from "node:stream/promises";
 import * as tar from "tar";
 import {
   RuntimeOptions,
@@ -15,9 +15,7 @@ import {
 } from "./types.js";
 import { glob } from "glob";
 
-const pipelineAsync = promisify(pipeline);
 const execAsync = promisify(exec);
-const globAsync = promisify(glob);
 
 const DEFAULT_NODE_VERSION = "v22.9.0";
 
@@ -115,7 +113,7 @@ export class RuntimeInjector {
       responseType: "stream",
     });
 
-    await pipelineAsync(response.data, writer);
+    await pipeline(response.data, writer);
     console.log(`File downloaded to: ${destination}`);
   }
 
@@ -170,9 +168,9 @@ export class RuntimeInjector {
     ];
 
     for (const pattern of patterns) {
-      const files = (await globAsync(pattern, {
+      const files = await glob(pattern, {
         cwd: this.runtimeInfo.targetDir,
-      })) as string[];
+      });
       for (const file of files) {
         await fs.remove(path.join(this.runtimeInfo.targetDir, file));
       }
@@ -246,7 +244,7 @@ export class RuntimeInjector {
         `${this.runtimeInfo.platform}_${this.runtimeInfo.arch}`
       );
       await fs.writeFile(markerFile, this.runtimeInfo.version);
-
+      console.log(this.options.cleanup);
       if (this.options.cleanup) {
         const cleanupConfig =
           typeof this.options.cleanup === "boolean"
