@@ -1,0 +1,38 @@
+{
+  "name": "tiny-runtime-injector",
+  "version": "0.0.1",
+  "description": "This is a library that helps you download complete, small runtimes like Node.js for your projects. It's useful for including a small runtime when building applications like Electron.",
+  "main": "dist/index.js",
+  "type": "module",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "prepare": "npm run build"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zerob13/tiny-runtime-injector.git"
+  },
+  "keywords": [
+    "node.js",
+    "runtime"
+  ],
+  "author": "zerob13",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/zerob13/tiny-runtime-injector/issues"
+  },
+  "homepage": "https://github.com/zerob13/tiny-runtime-injector#readme",
+  "dependencies": {
+    "axios": "^1.8.3",
+    "commander": "^13.1.0",
+    "fs-extra": "^11.3.0",
+    "tar": "^7.4.3"
+  },
+  "devDependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^20.11.24",
+    "typescript": "^5.3.3"
+  }
+}
