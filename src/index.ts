@@ -153,26 +153,74 @@ export class RuntimeInjector {
   }
 
   private async cleanupRuntime(cleanupConfig: CleanupConfig): Promise<void> {
-    const {
-      removeDocs = true,
-      removeDevFiles = true,
-      removeSourceMaps = true,
-      customRules = [],
-    } = cleanupConfig;
+    const targetDir = this.runtimeInfo.targetDir;
 
-    const patterns = [
-      ...(removeDocs ? ["**/*.md", "**/docs/**", "**/doc/**"] : []),
-      ...(removeDevFiles ? ["**/*.h", "**/*.cc", "**/*.cpp", "**/*.c"] : []),
-      ...(removeSourceMaps ? ["**/*.map"] : []),
-      ...customRules.map((rule: CleanupRule) => rule.pattern),
-    ];
+    if (
+      this.runtimeInfo.platform === "darwin" ||
+      this.runtimeInfo.platform === "linux"
+    ) {
+      console.log(
+        "Cleaning up for macOS/Linux: Removing share and include directories."
+      );
+      const shareDir = path.join(targetDir, "share");
+      const includeDir = path.join(targetDir, "include");
 
-    for (const pattern of patterns) {
-      const files = await glob(pattern, {
-        cwd: this.runtimeInfo.targetDir,
-      });
-      for (const file of files) {
-        await fs.remove(path.join(this.runtimeInfo.targetDir, file));
+      try {
+        if (await fs.pathExists(shareDir)) {
+          await fs.remove(shareDir);
+          console.log(`Removed directory: ${shareDir}`);
+        }
+        if (await fs.pathExists(includeDir)) {
+          await fs.remove(includeDir);
+          console.log(`Removed directory: ${includeDir}`);
+        }
+      } catch (error) {
+        console.error(`Error during directory removal: ${error}`);
+      }
+    } else {
+      const {
+        removeDocs = true,
+        removeDevFiles = true,
+        removeSourceMaps = true,
+        customRules = [],
+      } = cleanupConfig;
+
+      const patterns = [
+        ...(removeDocs
+          ? [
+              "**/*.md",
+              "**/docs/**",
+              "**/doc/**",
+              "share/doc/**",
+              "share/man/**",
+            ]
+          : []),
+        ...(removeDevFiles
+          ? ["**/*.h", "**/*.cc", "**/*.cpp", "**/*.c", "include/**"]
+          : []),
+        ...(removeSourceMaps ? ["**/*.map"] : []),
+        ...customRules.map((rule: CleanupRule) => rule.pattern),
+      ];
+
+      for (const pattern of patterns) {
+        console.log(`Cleaning up based on pattern: ${pattern}`);
+        try {
+          const files = await glob(pattern, {
+            cwd: targetDir,
+            absolute: true,
+            nodir: true,
+          });
+          console.log(
+            `Found ${files.length} files/items for pattern ${pattern}`
+          );
+          for (const file of files) {
+            if (await fs.pathExists(file)) {
+              await fs.remove(file);
+            }
+          }
+        } catch (error) {
+          console.error(`Error cleaning up pattern ${pattern}: ${error}`);
+        }
       }
     }
   }
