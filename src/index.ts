@@ -110,10 +110,11 @@ const RUNTIME_CONFIGS: Record<RuntimeType, RuntimeConfig> = {
     defaultVersion: DEFAULT_VERSIONS.uv,
     getDownloadUrl: (version: string, platform: string, arch: string) => {
       const platformId = getUvPlatformIdentifier(platform, arch);
-      const fileName = `uv-${platformId}.tar.gz`;
+      const fileExtension = platform === "win32" ? "zip" : "tar.gz";
+      const fileName = `uv-${platformId}.${fileExtension}`;
       return `https://github.com/astral-sh/uv/releases/download/${version}/${fileName}`;
     },
-    getFileExtension: () => "tar.gz",
+    getFileExtension: (platform: string) => platform === "win32" ? "zip" : "tar.gz",
     getExecutablePath: (targetDir: string, platform: string) =>
       path.join(targetDir, platform === "win32" ? "uv.exe" : "uv"),
     extractFiles: async (
@@ -191,10 +192,28 @@ function getUvPlatformIdentifier(platform: string, arch: string): string {
   if (platform === "darwin") {
     return arch === "arm64" ? "aarch64-apple-darwin" : "x86_64-apple-darwin";
   } else if (platform === "linux") {
+    // Standard Linux builds
     if (arch === "arm64") return "aarch64-unknown-linux-gnu";
+    if (arch === "x64" || arch === "x86_64") return "x86_64-unknown-linux-gnu";
+    if (arch === "x86" || arch === "ia32") return "i686-unknown-linux-gnu";
+    if (arch === "arm" || arch === "armv7l") return "armv7-unknown-linux-gnueabihf";
+    if (arch === "ppc64") return "powerpc64-unknown-linux-gnu";
+    if (arch === "ppc64le") return "powerpc64le-unknown-linux-gnu";
+    if (arch === "s390x") return "s390x-unknown-linux-gnu";
+    if (arch === "riscv64") return "riscv64gc-unknown-linux-gnu";
+    
+    // MUSL builds
+    if (arch === "arm64-musl") return "aarch64-unknown-linux-musl";
+    if (arch === "x64-musl" || arch === "x86_64-musl") return "x86_64-unknown-linux-musl";
+    if (arch === "x86-musl" || arch === "ia32-musl") return "i686-unknown-linux-musl";
+    if (arch === "arm-musl") return "arm-unknown-linux-musleabihf";
+    if (arch === "armv7-musl") return "armv7-unknown-linux-musleabihf";
+    
+    // Default to standard x64 GNU build for unknown architectures
     return "x86_64-unknown-linux-gnu";
   } else if (platform === "win32") {
     if (arch === "arm64") return "aarch64-pc-windows-msvc";
+    if (arch === "x86" || arch === "ia32") return "i686-pc-windows-msvc";
     return "x86_64-pc-windows-msvc";
   }
 
