@@ -1,4 +1,7 @@
+export type RuntimeType = "node" | "bun" | "uv";
+
 export interface RuntimeOptions {
+  type?: RuntimeType;
   version?: string;
   platform?: string;
   arch?: string;
@@ -19,9 +22,24 @@ export interface CleanupRule {
 }
 
 export interface RuntimeInfo {
+  type: RuntimeType;
   version: string;
   platform: string;
   arch: string;
   targetDir: string;
-  nodePath: string;
+  executablePath: string;
+}
+
+export interface RuntimeConfig {
+  defaultVersion: string;
+  getDownloadUrl: (version: string, platform: string, arch: string) => string;
+  getFileExtension: (platform: string) => string;
+  getExecutablePath: (targetDir: string, platform: string) => string;
+  extractFiles?: (
+    extractedDir: string,
+    targetDir: string,
+    version: string,
+    platform: string,
+    arch: string
+  ) => Promise<void>;
 }
