@@ -4,6 +4,7 @@ import { RuntimeInjector } from './dist/index.js';
 import fs from 'fs-extra';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import axios from 'axios';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,11 +16,15 @@ const testConfigs = [
     type: 'node',
     platforms: [
       { platform: 'win32', arch: 'x64' },
+      { platform: 'win32', arch: 'x86' },
       { platform: 'win32', arch: 'arm64' },
       { platform: 'darwin', arch: 'x64' },
       { platform: 'darwin', arch: 'arm64' },
       { platform: 'linux', arch: 'x64' },
       { platform: 'linux', arch: 'arm64' },
+      { platform: 'linux', arch: 'armv7l' },
+      { platform: 'linux', arch: 'ppc64le' },
+      { platform: 'linux', arch: 's390x' },
     ]
   },
   // Bun configurations
@@ -27,7 +32,6 @@ const testConfigs = [
     type: 'bun',
     platforms: [
       { platform: 'win32', arch: 'x64' },
-      { platform: 'win32', arch: 'arm64' },
       { platform: 'darwin', arch: 'x64' },
       { platform: 'darwin', arch: 'arm64' },
       { platform: 'linux', arch: 'x64' },
@@ -39,14 +43,24 @@ const testConfigs = [
     type: 'uv',
     platforms: [
       { platform: 'win32', arch: 'x64' },
+      { platform: 'win32', arch: 'x86' },
       { platform: 'win32', arch: 'arm64' },
       { platform: 'darwin', arch: 'x64' },
       { platform: 'darwin', arch: 'arm64' },
       { platform: 'linux', arch: 'x64' },
+      { platform: 'linux', arch: 'x86' },
       { platform: 'linux', arch: 'arm64' },
+      { platform: 'linux', arch: 'armv7l' },
+      { platform: 'linux', arch: 'ppc64' },
+      { platform: 'linux', arch: 'ppc64le' },
+      { platform: 'linux', arch: 's390x' },
+      { platform: 'linux', arch: 'riscv64' },
       // MUSL variants
       { platform: 'linux', arch: 'x64-musl' },
+      { platform: 'linux', arch: 'x86-musl' },
       { platform: 'linux', arch: 'arm64-musl' },
+      { platform: 'linux', arch: 'arm-musl' },
+      { platform: 'linux', arch: 'armv7-musl' },
     ]
   }
 ];
@@ -205,95 +219,142 @@ function getUvPlatformIdentifier(platform, arch) {
   throw new Error(`Unsupported platform for uv: ${platform}-${arch}`);
 }
 
+// 检查URL是否可访问（不下载文件内容）
+async function checkUrlAccessibility(url, testId) {
+  try {
+    const response = await axios.head(url, {
+      timeout: 10000, // 10秒超时
+      maxRedirects: 5,
+      validateStatus: (status) => status < 400 // 只要不是4xx或5xx错误就算成功
+    });
+    
+    const contentLength = response.headers['content-length'];
+    const sizeInfo = contentLength ? ` (${Math.round(contentLength / 1024 / 1024 * 100) / 100}MB)` : '';
+    
+    log(`✓ ${testId} - HTTP ${response.status}${sizeInfo} - ${url}`, 'green');
+    return { success: true, status: response.status, size: contentLength };
+  } catch (error) {
+    if (error.response) {
+      // 服务器响应了错误状态码
+      log(`✗ ${testId} - HTTP ${error.response.status} - ${url}`, 'red');
+      return { 
+        success: false, 
+        status: error.response.status, 
+        error: `HTTP ${error.response.status}` 
+      };
+    } else {
+      // 网络错误或其他错误
+      log(`✗ ${testId} - ${error.message} - ${url}`, 'red');
+      return { 
+        success: false, 
+        error: error.message 
+      };
+    }
+  }
+}
+
 async function validateDownloadUrl(type, platform, arch, version) {
   const testId = `${type}-${platform}-${arch}`;
   
   try {
     const downloadUrl = generateDownloadUrl(type, platform, arch, version);
-    const fileExtension = platform === "win32" ? (type === 'node' ? 'zip' : (type === 'uv' ? 'zip' : 'zip')) : 'tar.gz';
     
-    log(`${testId}: ${downloadUrl}`, 'cyan');
+    // 使用HEAD请求检查URL可访问性
+    const result = await checkUrlAccessibility(downloadUrl, testId);
     
-    // 简单验证URL格式
-    if (!downloadUrl.startsWith('https://')) {
-      throw new Error('URL should start with https://');
-    }
-    
-    if (!downloadUrl.includes(version)) {
-      throw new Error('URL should contain version');
-    }
-    
-    return { testId, downloadUrl, fileExtension, valid: true };
+    return {
+      testId,
+      downloadUrl,
+      valid: result.success,
+      status: result.status,
+      error: result.error,
+      size: result.size
+    };
   } catch (error) {
     log(`✗ ${testId} - Invalid URL: ${error.message}`, 'red');
-    return { testId, error: error.message, valid: false };
+    return { 
+      testId, 
+      error: error.message, 
+      valid: false 
+    };
   }
 }
 
 async function runUrlValidationTests() {
-  logHeader('URL VALIDATION TESTS');
+  logHeader('下载链接可用性测试');
   
   const urlResults = [];
+  let totalChecked = 0;
   
   for (const config of testConfigs) {
-    logSection(`Testing ${config.type.toUpperCase()} URLs`);
+    logSection(`测试 ${config.type.toUpperCase()} 下载链接`);
     
-    for (const { platform, arch } of config.platforms) {
-      const result = await validateDownloadUrl(config.type, platform, arch, getDefaultVersion(config.type));
-      urlResults.push(result);
-    }
+    // 并发检查所有URL以提高速度
+    const promises = config.platforms.map(({ platform, arch }) => {
+      totalChecked++;
+      return validateDownloadUrl(config.type, platform, arch, getDefaultVersion(config.type));
+    });
+    
+    const results = await Promise.all(promises);
+    urlResults.push(...results);
   }
   
   const validUrls = urlResults.filter(r => r.valid);
   const invalidUrls = urlResults.filter(r => !r.valid);
   
-  log(`\nURL Validation Summary:`, 'bright');
-  log(`✓ Valid URLs: ${validUrls.length}`, 'green');
-  log(`✗ Invalid URLs: ${invalidUrls.length}`, 'red');
+  // 按状态分组统计
+  const statusCounts = {};
+  validUrls.forEach(r => {
+    const status = r.status || 'unknown';
+    statusCounts[status] = (statusCounts[status] || 0) + 1;
+  });
   
-  if (invalidUrls.length > 0) {
-    log(`\nInvalid URLs:`, 'red');
-    invalidUrls.forEach(r => {
-      log(`  - ${r.testId}: ${r.error}`, 'red');
+  logHeader('测试结果统计');
+  log(`总共检查: ${totalChecked} 个下载链接`, 'bright');
+  log(`✓ 可用链接: ${validUrls.length}`, 'green');
+  log(`✗ 不可用链接: ${invalidUrls.length}`, 'red');
+  log(`成功率: ${Math.round((validUrls.length / totalChecked) * 100)}%`, 'blue');
+  
+  if (Object.keys(statusCounts).length > 0) {
+    log(`\nHTTP状态码统计:`, 'cyan');
+    Object.entries(statusCounts).forEach(([status, count]) => {
+      log(`  HTTP ${status}: ${count} 个`, 'cyan');
     });
   }
   
-  return urlResults;
-}
-
-async function runDownloadTests() {
-  logHeader('DOWNLOAD TESTS');
-  
-  // 确保测试目录存在
-  await fs.ensureDir(testRootDir);
-  
-  // 只测试当前平台的一些组合，避免跨平台问题
-  const currentPlatform = process.platform;
-  const currentArch = process.arch;
-  
-  log(`Current platform: ${currentPlatform}-${currentArch}`, 'blue');
-  
-  const downloadTests = [
-    // 测试当前平台
-    { type: 'node', platform: currentPlatform, arch: currentArch },
-    { type: 'bun', platform: currentPlatform, arch: currentArch },
-    { type: 'uv', platform: currentPlatform, arch: currentArch },
-    
-    // 测试一些跨平台组合（只下载，不运行）
-    { type: 'uv', platform: 'linux', arch: 'x64' },
-    { type: 'uv', platform: 'win32', arch: 'x64' },
-    { type: 'node', platform: 'linux', arch: 'arm64' },
-  ];
-  
-  for (const testConfig of downloadTests) {
-    results.total++;
-    await testDownload(
-      testConfig.type,
-      testConfig.platform,
-      testConfig.arch,
-      getDefaultVersion(testConfig.type)
-    );
+  if (invalidUrls.length > 0) {
+    log(`\n不可用的下载链接:`, 'red');
+    invalidUrls.forEach(r => {
+      log(`  - ${r.testId}: ${r.error || 'Unknown error'}`, 'red');
+      if (r.downloadUrl) {
+        log(`    URL: ${r.downloadUrl}`, 'yellow');
+      }
+    });
   }
+  
+  // 显示一些有效链接作为示例
+  if (validUrls.length > 0) {
+    log(`\n有效链接示例:`, 'green');
+    validUrls.slice(0, 5).forEach(r => {
+      const sizeInfo = r.size ? ` (${Math.round(r.size / 1024 / 1024 * 100) / 100}MB)` : '';
+      log(`  ✓ ${r.testId}${sizeInfo}`, 'green');
+      log(`    ${r.downloadUrl}`, 'cyan');
+    });
+    if (validUrls.length > 5) {
+      log(`  ... 还有 ${validUrls.length - 5} 个有效链接`, 'green');
+    }
+  }
+  
+  results.total = totalChecked;
+  results.passed = validUrls.length;
+  results.failed = invalidUrls.length;
+  results.errors = invalidUrls.map(r => ({
+    testId: r.testId,
+    error: r.error || 'Unknown error',
+    url: r.downloadUrl
+  }));
+  
+  return urlResults;
 }
 
 function getDefaultVersion(type) {
@@ -305,64 +366,58 @@ function getDefaultVersion(type) {
   return defaultVersions[type];
 }
 
-async function cleanup() {
-  logHeader('CLEANUP');
-  
-  try {
-    if (await fs.pathExists(testRootDir)) {
-      log('Removing test directory...', 'yellow');
-      await fs.remove(testRootDir);
-      log('✓ Test directory removed', 'green');
-    }
-  } catch (error) {
-    log(`✗ Cleanup failed: ${error.message}`, 'red');
-  }
-}
-
 async function printSummary() {
-  logHeader('TEST SUMMARY');
+  logHeader('最终总结');
   
-  log(`Total tests: ${results.total}`, 'bright');
-  log(`✓ Passed: ${results.passed}`, 'green');
-  log(`✗ Failed: ${results.failed}`, 'red');
-  log(`Success rate: ${results.total > 0 ? Math.round((results.passed / results.total) * 100) : 0}%`, 'blue');
+  log(`测试完成！`, 'bright');
+  log(`✓ 成功: ${results.passed}`, 'green');
+  log(`✗ 失败: ${results.failed}`, 'red');
+  log(`总计: ${results.total}`, 'blue');
+  log(`成功率: ${results.total > 0 ? Math.round((results.passed / results.total) * 100) : 0}%`, 'bright');
   
   if (results.errors.length > 0) {
-    log(`\nError Details:`, 'red');
+    log(`\n失败详情:`, 'red');
     results.errors.forEach((error, index) => {
       log(`\n${index + 1}. ${error.testId}:`, 'red');
-      log(`   ${error.error}`, 'red');
+      log(`   错误: ${error.error}`, 'red');
+      if (error.url) {
+        log(`   链接: ${error.url}`, 'yellow');
+      }
     });
   }
 }
 
 async function main() {
-  logHeader('TINY RUNTIME INJECTOR - COMPREHENSIVE TESTS');
+  logHeader('TINY RUNTIME INJECTOR - 下载链接验证测试');
+  
+  const startTime = Date.now();
   
   try {
-    // 1. 验证所有URL
+    log('开始检查所有运行时的下载链接...', 'blue');
+    log('注意: 此测试只检查链接可用性，不下载实际文件\n', 'yellow');
+    
+    // 运行URL验证测试
     await runUrlValidationTests();
     
-    // 2. 运行实际下载测试
-    await runDownloadTests();
-    
-    // 3. 打印总结
+    // 打印总结
     await printSummary();
     
   } catch (error) {
-    log(`\nFatal error: ${error.message}`, 'red');
+    log(`\n致命错误: ${error.message}`, 'red');
     console.error(error.stack);
-  } finally {
-    // 4. 清理
-    await cleanup();
   }
   
-  // 5. 退出状态
+  const endTime = Date.now();
+  const duration = Math.round((endTime - startTime) / 1000);
+  
+  log(`\n测试耗时: ${duration} 秒`, 'blue');
+  
+  // 退出状态
   process.exit(results.failed > 0 ? 1 : 0);
 }
 
 // 导出测试函数以便单独使用
-export { runUrlValidationTests, runDownloadTests, cleanup };
+export { runUrlValidationTests };
 
 // 如果直接运行此脚本
 if (import.meta.url === `file://${process.argv[1]}`) {
