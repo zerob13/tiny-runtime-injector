@@ -21,9 +21,9 @@ const execAsync = promisify(exec);
 
 // Default versions for each runtime
 const DEFAULT_VERSIONS = {
-  node: "v22.9.0",
-  bun: "v1.2.16",
-  uv: "0.7.13",
+  node: "v22.18.0",
+  bun: "v1.2.20",
+  uv: "0.8.8",
 };
 
 // Runtime configurations
