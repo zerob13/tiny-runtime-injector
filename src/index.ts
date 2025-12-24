@@ -19,11 +19,22 @@ import { glob } from "glob";
 
 const execAsync = promisify(exec);
 
+// Platform configuration for ripgrep
+const RIPGREP_PLATFORM: Record<string, { target: string; ext: "tar.gz" | "zip" }> = {
+  "x64-win32": { target: "x86_64-pc-windows-msvc", ext: "zip" },
+  "arm64-win32": { target: "aarch64-pc-windows-msvc", ext: "zip" },
+  "x64-linux": { target: "x86_64-unknown-linux-musl", ext: "tar.gz" },
+  "arm64-linux": { target: "aarch64-unknown-linux-gnu", ext: "tar.gz" },
+  "x64-darwin": { target: "x86_64-apple-darwin", ext: "tar.gz" },
+  "arm64-darwin": { target: "aarch64-apple-darwin", ext: "tar.gz" },
+};
+
 // Default versions for each runtime
 const DEFAULT_VERSIONS = {
-  node: "v22.18.0",
-  bun: "v1.2.20",
-  uv: "0.8.8",
+  node: "v24.12.0",
+  bun: "v1.3.5",
+  uv: "0.9.18",
+  ripgrep: "14.1.1",
 };
 
 // Runtime configurations
@@ -36,7 +47,7 @@ const RUNTIME_CONFIGS: Record<RuntimeType, RuntimeConfig> = {
       const fileName = `node-${version}-${platformId}.${fileExtension}`;
       return `https://nodejs.org/dist/${version}/${fileName}`;
     },
-    getFileExtension: (platform: string) =>
+    getFileExtension: (platform: string, arch: string) =>
       platform === "win32" ? "zip" : "tar.gz",
     getExecutablePath: (targetDir: string, platform: string) =>
       path.join(targetDir, platform === "win32" ? "node.exe" : "bin/node"),
@@ -66,7 +77,7 @@ const RUNTIME_CONFIGS: Record<RuntimeType, RuntimeConfig> = {
       const fileName = `bun-${platformId}.zip`;
       return `https://github.com/oven-sh/bun/releases/download/bun-${version}/${fileName}`;
     },
-    getFileExtension: () => "zip",
+    getFileExtension: (platform: string, arch: string) => "zip",
     getExecutablePath: (targetDir: string, platform: string) =>
       path.join(targetDir, platform === "win32" ? "bun.exe" : "bun"),
     extractFiles: async (
@@ -114,7 +125,7 @@ const RUNTIME_CONFIGS: Record<RuntimeType, RuntimeConfig> = {
       const fileName = `uv-${platformId}.${fileExtension}`;
       return `https://github.com/astral-sh/uv/releases/download/${version}/${fileName}`;
     },
-    getFileExtension: (platform: string) => platform === "win32" ? "zip" : "tar.gz",
+    getFileExtension: (platform: string, arch: string) => platform === "win32" ? "zip" : "tar.gz",
     getExecutablePath: (targetDir: string, platform: string) =>
       path.join(targetDir, platform === "win32" ? "uv.exe" : "uv"),
     extractFiles: async (
@@ -151,6 +162,66 @@ const RUNTIME_CONFIGS: Record<RuntimeType, RuntimeConfig> = {
           overwrite: true,
         });
       }
+    },
+  },
+  ripgrep: {
+    defaultVersion: DEFAULT_VERSIONS.ripgrep,
+    getDownloadUrl: (version: string, platform: string, arch: string) => {
+      const platformKey = `${arch}-${platform}`;
+      const platformConfig = RIPGREP_PLATFORM[platformKey];
+
+      if (!platformConfig) {
+        throw new Error(`Unsupported platform for ripgrep: ${platform}-${arch}`);
+      }
+
+      const fileName = `ripgrep-${version}-${platformConfig.target}.${platformConfig.ext}`;
+      return `https://github.com/BurntSushi/ripgrep/releases/download/${version}/${fileName}`;
+    },
+    getFileExtension: (platform: string, arch: string) => {
+      const platformKey = `${arch}-${platform}`;
+      const platformConfig = RIPGREP_PLATFORM[platformKey];
+
+      if (!platformConfig) {
+        throw new Error(`Unsupported platform for ripgrep: ${platform}-${arch}`);
+      }
+
+      return platformConfig.ext;
+    },
+    getExecutablePath: (targetDir: string, platform: string) =>
+      path.join(targetDir, platform === "win32" ? "rg.exe" : "rg"),
+    extractFiles: async (
+      extractedDir: string,
+      targetDir: string,
+      version: string,
+      platform: string,
+      arch: string
+    ) => {
+      const execName = platform === "win32" ? "rg.exe" : "rg";
+      const files = await fs.readdir(extractedDir);
+
+      // Find rg executable - it could be in the root or in a subdirectory
+      let rgPath: string | undefined;
+
+      // First, try to find it in the root
+      if (files.includes(execName)) {
+        rgPath = path.join(extractedDir, execName);
+      } else {
+        // Search in subdirectories
+        for (const file of files) {
+          const filePath = path.join(extractedDir, file, execName);
+          if (await fs.pathExists(filePath)) {
+            rgPath = filePath;
+            break;
+          }
+        }
+      }
+
+      if (!rgPath) {
+        throw new Error(`Could not find ${execName} in extracted files`);
+      }
+
+      const destPath = path.join(targetDir, execName);
+      await fs.move(rgPath, destPath, { overwrite: true });
     },
   },
 };
@@ -220,6 +291,182 @@ function getUvPlatformIdentifier(platform: string, arch: string): string {
   throw new Error(`Unsupported platform for uv: ${platform}-${arch}`);
 }
 
+function getRipgrepPlatformIdentifier(platform: string, arch: string): string {
+  const platformKey = `${arch}-${platform}`;
+
+  if (platformKey in RIPGREP_PLATFORM) {
+    return RIPGREP_PLATFORM[platformKey].target;
+  }
+
+  throw new Error(`Unsupported platform for ripgrep: ${platform}-${arch}`);
+}
+
+const PROXY_ENV_KEYS = {
+  httpProxy: ["HTTP_PROXY", "http_proxy"],
+  httpsProxy: ["HTTPS_PROXY", "https_proxy"],
+  noProxy: ["NO_PROXY", "no_proxy"],
+} as const;
+
+type ProxyConfig = {
+  protocol: string;
+  host: string;
+  port: number;
+  auth?: {
+    username: string;
+    password: string;
+  };
+};
+
+function getEnvValue(keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function normalizeProxyUrl(proxyUrl: string, fallbackProtocol: string): string {
+  if (/^[a-z]+:\/\//i.test(proxyUrl)) {
+    return proxyUrl;
+  }
+  const protocol = fallbackProtocol.endsWith(":")
+    ? fallbackProtocol
+    : `${fallbackProtocol}:`;
+  return `${protocol}//${proxyUrl}`;
+}
+
+function getDefaultPort(protocol: string): number {
+  return protocol === "https:" ? 443 : 80;
+}
+
+function parseNoProxyEntry(entry: string): { host: string; port?: string } {
+  let value = entry.trim();
+  if (!value) {
+    return { host: "" };
+  }
+
+  if (value.includes("://")) {
+    try {
+      value = new URL(value).host;
+    } catch {
+      value = value.split("://")[1] || value;
+    }
+  }
+
+  value = value.split("/")[0];
+
+  if (value.startsWith("[") && value.includes("]")) {
+    const endIndex = value.indexOf("]");
+    const host = value.slice(1, endIndex);
+    const portValue = value.slice(endIndex + 1);
+    if (portValue.startsWith(":")) {
+      return { host, port: portValue.slice(1) };
+    }
+    return { host };
+  }
+
+  const lastColon = value.lastIndexOf(":");
+  if (lastColon > -1 && value.indexOf(":") === lastColon) {
+    return {
+      host: value.slice(0, lastColon),
+      port: value.slice(lastColon + 1),
+    };
+  }
+
+  return { host: value };
+}
+
+function isNoProxyMatch(targetUrl: URL, noProxy: string): boolean {
+  const entries = noProxy
+    .split(/[,\s]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  if (entries.length === 0) {
+    return false;
+  }
+
+  if (entries.includes("*")) {
+    return true;
+  }
+
+  const hostname = targetUrl.hostname.toLowerCase();
+  const port = targetUrl.port || String(getDefaultPort(targetUrl.protocol));
+
+  for (const entry of entries) {
+    if (entry === "*") {
+      return true;
+    }
+
+    const { host, port: entryPort } = parseNoProxyEntry(entry);
+    if (!host) {
+      continue;
+    }
+
+    if (entryPort && entryPort !== port) {
+      continue;
+    }
+
+    const normalizedHost = host.toLowerCase();
+    if (!normalizedHost) {
+      continue;
+    }
+
+    if (!/^[.*]/.test(normalizedHost)) {
+      if (hostname === normalizedHost) {
+        return true;
+      }
+      continue;
+    }
+
+    const matchHost = normalizedHost.startsWith("*")
+      ? normalizedHost.slice(1)
+      : normalizedHost;
+    if (hostname.endsWith(matchHost)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function buildProxyConfig(proxyUrl: string, fallbackProtocol: string): ProxyConfig {
+  const normalizedUrl = normalizeProxyUrl(proxyUrl, fallbackProtocol);
+  let parsed: URL;
+
+  try {
+    parsed = new URL(normalizedUrl);
+  } catch {
+    throw new Error(`Invalid proxy URL: ${proxyUrl}`);
+  }
+
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`Unsupported proxy protocol: ${parsed.protocol}`);
+  }
+
+  const port = parsed.port ? Number(parsed.port) : getDefaultPort(parsed.protocol);
+  if (Number.isNaN(port)) {
+    throw new Error(`Invalid proxy port in URL: ${proxyUrl}`);
+  }
+
+  const proxyConfig: ProxyConfig = {
+    protocol: parsed.protocol,
+    host: parsed.hostname,
+    port,
+  };
+
+  if (parsed.username || parsed.password) {
+    proxyConfig.auth = {
+      username: parsed.username,
+      password: parsed.password,
+    };
+  }
+
+  return proxyConfig;
+}
+
 export class RuntimeInjector {
   private options: RuntimeOptions;
   private runtimeInfo: RuntimeInfo;
@@ -236,6 +483,9 @@ export class RuntimeInjector {
       arch: options.arch || process.arch,
       targetDir: options.targetDir,
       cleanup: options.cleanup ?? true,
+      httpProxy: options.httpProxy,
+      httpsProxy: options.httpsProxy,
+      noProxy: options.noProxy,
     };
 
     this.runtimeInfo = {
@@ -280,6 +530,9 @@ export class RuntimeInjector {
                 case "uv":
                   testCommand = `"${execPath}" --version`;
                   break;
+                case "ripgrep":
+                  testCommand = `"${execPath}" --version`;
+                  break;
                 default:
                   throw new Error(
                     `Unknown runtime type: ${this.runtimeInfo.type}`
@@ -297,6 +550,8 @@ export class RuntimeInjector {
                   this.runtimeInfo.version.replace("v", "")
                 );
               } else if (this.runtimeInfo.type === "uv") {
+                return actualVersion.includes(this.runtimeInfo.version);
+              } else if (this.runtimeInfo.type === "ripgrep") {
                 return actualVersion.includes(this.runtimeInfo.version);
               }
 
@@ -330,14 +585,47 @@ export class RuntimeInjector {
     await fs.ensureDir(path.dirname(destination));
 
     const writer = createWriteStream(destination);
+    const proxyConfig = this.getProxyConfigForUrl(url);
     const response = await axios({
       method: "GET",
       url: url,
       responseType: "stream",
+      proxy: proxyConfig ?? false,
     });
 
     await pipeline(response.data, writer);
     console.log(`File downloaded to: ${destination}`);
+  }
+
+  private getProxyConfigForUrl(url: string): ProxyConfig | undefined {
+    const parsedUrl = new URL(url);
+    const noProxy = this.getProxyOption("noProxy");
+
+    if (noProxy && isNoProxyMatch(parsedUrl, noProxy)) {
+      return undefined;
+    }
+
+    const proxyUrl =
+      parsedUrl.protocol === "https:"
+        ? this.getProxyOption("httpsProxy")
+        : this.getProxyOption("httpProxy");
+
+    if (!proxyUrl) {
+      return undefined;
+    }
+
+    return buildProxyConfig(proxyUrl, parsedUrl.protocol);
+  }
+
+  private getProxyOption(
+    key: "httpProxy" | "httpsProxy" | "noProxy"
+  ): string | undefined {
+    const directValue = this.options[key];
+    if (directValue) {
+      return directValue;
+    }
+
+    return getEnvValue(PROXY_ENV_KEYS[key]);
   }
 
   private async extractTarGz(
@@ -470,7 +758,8 @@ export class RuntimeInjector {
       );
 
       const fileExtension = this.config.getFileExtension(
-        this.runtimeInfo.platform
+        this.runtimeInfo.platform,
+        this.runtimeInfo.arch
       );
       const fileName = `${this.runtimeInfo.type}-${this.runtimeInfo.version}.${fileExtension}`;
 

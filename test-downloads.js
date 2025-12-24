@@ -62,6 +62,18 @@ const testConfigs = [
       { platform: 'linux', arch: 'arm-musl' },
       { platform: 'linux', arch: 'armv7-musl' },
     ]
+  },
+  // ripgrep configurations
+  {
+    type: 'ripgrep',
+    platforms: [
+      { platform: 'win32', arch: 'x64' },
+      { platform: 'win32', arch: 'arm64' },
+      { platform: 'darwin', arch: 'x64' },
+      { platform: 'darwin', arch: 'arm64' },
+      { platform: 'linux', arch: 'x64' },
+      { platform: 'linux', arch: 'arm64' },
+    ]
   }
 ];
 
@@ -101,6 +113,224 @@ function logSection(message) {
   log(`${'-'.repeat(40)}`, 'blue');
 }
 
+const PROXY_ENV_KEYS = {
+  httpProxy: ['HTTP_PROXY', 'http_proxy'],
+  httpsProxy: ['HTTPS_PROXY', 'https_proxy'],
+  noProxy: ['NO_PROXY', 'no_proxy'],
+};
+
+function getEnvValue(keys) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function normalizeProxyUrl(proxyUrl, fallbackProtocol) {
+  if (/^[a-z]+:\/\//i.test(proxyUrl)) {
+    return proxyUrl;
+  }
+  const protocol = fallbackProtocol.endsWith(':')
+    ? fallbackProtocol
+    : `${fallbackProtocol}:`;
+  return `${protocol}//${proxyUrl}`;
+}
+
+function getDefaultPort(protocol) {
+  return protocol === 'https:' ? 443 : 80;
+}
+
+function parseNoProxyEntry(entry) {
+  let value = entry.trim();
+  if (!value) {
+    return { host: '' };
+  }
+
+  if (value.includes('://')) {
+    try {
+      value = new URL(value).host;
+    } catch {
+      value = value.split('://')[1] || value;
+    }
+  }
+
+  value = value.split('/')[0];
+
+  if (value.startsWith('[') && value.includes(']')) {
+    const endIndex = value.indexOf(']');
+    const host = value.slice(1, endIndex);
+    const portValue = value.slice(endIndex + 1);
+    if (portValue.startsWith(':')) {
+      return { host, port: portValue.slice(1) };
+    }
+    return { host };
+  }
+
+  const lastColon = value.lastIndexOf(':');
+  if (lastColon > -1 && value.indexOf(':') === lastColon) {
+    return {
+      host: value.slice(0, lastColon),
+      port: value.slice(lastColon + 1),
+    };
+  }
+
+  return { host: value };
+}
+
+function isNoProxyMatch(targetUrl, noProxy) {
+  const entries = noProxy
+    .split(/[,\s]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  if (entries.length === 0) {
+    return false;
+  }
+
+  if (entries.includes('*')) {
+    return true;
+  }
+
+  const hostname = targetUrl.hostname.toLowerCase();
+  const port = targetUrl.port || String(getDefaultPort(targetUrl.protocol));
+
+  for (const entry of entries) {
+    if (entry === '*') {
+      return true;
+    }
+
+    const { host, port: entryPort } = parseNoProxyEntry(entry);
+    if (!host) {
+      continue;
+    }
+
+    if (entryPort && entryPort !== port) {
+      continue;
+    }
+
+    const normalizedHost = host.toLowerCase();
+    if (!normalizedHost) {
+      continue;
+    }
+
+    if (!/^[.*]/.test(normalizedHost)) {
+      if (hostname === normalizedHost) {
+        return true;
+      }
+      continue;
+    }
+
+    const matchHost = normalizedHost.startsWith('*')
+      ? normalizedHost.slice(1)
+      : normalizedHost;
+    if (hostname.endsWith(matchHost)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function buildProxyConfig(proxyUrl, fallbackProtocol) {
+  const normalizedUrl = normalizeProxyUrl(proxyUrl, fallbackProtocol);
+  let parsed;
+
+  try {
+    parsed = new URL(normalizedUrl);
+  } catch {
+    throw new Error(`Invalid proxy URL: ${proxyUrl}`);
+  }
+
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Unsupported proxy protocol: ${parsed.protocol}`);
+  }
+
+  const port = parsed.port ? Number(parsed.port) : getDefaultPort(parsed.protocol);
+  if (Number.isNaN(port)) {
+    throw new Error(`Invalid proxy port in URL: ${proxyUrl}`);
+  }
+
+  const proxyConfig = {
+    protocol: parsed.protocol,
+    host: parsed.hostname,
+    port,
+  };
+
+  if (parsed.username || parsed.password) {
+    proxyConfig.auth = {
+      username: parsed.username,
+      password: parsed.password,
+    };
+  }
+
+  return proxyConfig;
+}
+
+function formatProxyUrl(proxyUrl, fallbackProtocol) {
+  try {
+    const normalized = normalizeProxyUrl(proxyUrl, fallbackProtocol);
+    const parsed = new URL(normalized);
+    const auth = parsed.username ? `${parsed.username}:***@` : '';
+    const port = parsed.port ? `:${parsed.port}` : '';
+    return `${parsed.protocol}//${auth}${parsed.hostname}${port}`;
+  } catch {
+    return proxyUrl;
+  }
+}
+
+function formatProxyConfig(proxyConfig) {
+  const auth = proxyConfig.auth?.username ? `${proxyConfig.auth.username}:***@` : '';
+  return `${proxyConfig.protocol}//${auth}${proxyConfig.host}:${proxyConfig.port}`;
+}
+
+function resolveProxyForUrl(url) {
+  const parsedUrl = new URL(url);
+  const noProxy = getEnvValue(PROXY_ENV_KEYS.noProxy);
+
+  if (noProxy && isNoProxyMatch(parsedUrl, noProxy)) {
+    return { proxy: undefined, reason: 'no_proxy' };
+  }
+
+  const proxyUrl =
+    parsedUrl.protocol === 'https:'
+      ? getEnvValue(PROXY_ENV_KEYS.httpsProxy)
+      : getEnvValue(PROXY_ENV_KEYS.httpProxy);
+
+  if (!proxyUrl) {
+    return { proxy: undefined, reason: 'none' };
+  }
+
+  return {
+    proxy: buildProxyConfig(proxyUrl, parsedUrl.protocol),
+    reason: parsedUrl.protocol === 'https:' ? 'https_proxy' : 'http_proxy',
+  };
+}
+
+function logProxySummary() {
+  const httpProxy = getEnvValue(PROXY_ENV_KEYS.httpProxy);
+  const httpsProxy = getEnvValue(PROXY_ENV_KEYS.httpsProxy);
+  const noProxy = getEnvValue(PROXY_ENV_KEYS.noProxy);
+
+  if (!httpProxy && !httpsProxy && !noProxy) {
+    log('未检测到代理环境变量，将直接连接。', 'cyan');
+    return;
+  }
+
+  log('检测到代理环境变量:', 'cyan');
+  if (httpProxy) {
+    log(`  HTTP_PROXY: ${formatProxyUrl(httpProxy, 'http:')}`, 'cyan');
+  }
+  if (httpsProxy) {
+    log(`  HTTPS_PROXY: ${formatProxyUrl(httpsProxy, 'https:')}`, 'cyan');
+  }
+  if (noProxy) {
+    log(`  NO_PROXY: ${noProxy}`, 'cyan');
+  }
+}
+
 async function testDownload(type, platform, arch, version) {
   const testId = `${type}-${platform}-${arch}`;
   const targetDir = path.join(testRootDir, testId);
@@ -135,6 +365,15 @@ async function testDownload(type, platform, arch, version) {
   }
 }
 
+const RIPGREP_PLATFORM = {
+  'x64-win32': { target: 'x86_64-pc-windows-msvc', ext: 'zip' },
+  'arm64-win32': { target: 'aarch64-pc-windows-msvc', ext: 'zip' },
+  'x64-linux': { target: 'x86_64-unknown-linux-musl', ext: 'tar.gz' },
+  'arm64-linux': { target: 'aarch64-unknown-linux-gnu', ext: 'tar.gz' },
+  'x64-darwin': { target: 'x86_64-apple-darwin', ext: 'tar.gz' },
+  'arm64-darwin': { target: 'aarch64-apple-darwin', ext: 'tar.gz' },
+};
+
 // 直接实现URL生成逻辑用于测试
 function generateDownloadUrl(type, platform, arch, version) {
   if (type === 'node') {
@@ -151,6 +390,14 @@ function generateDownloadUrl(type, platform, arch, version) {
     const fileExtension = platform === "win32" ? "zip" : "tar.gz";
     const fileName = `uv-${platformId}.${fileExtension}`;
     return `https://github.com/astral-sh/uv/releases/download/${version}/${fileName}`;
+  } else if (type === 'ripgrep') {
+    const platformKey = `${arch}-${platform}`;
+    const platformConfig = RIPGREP_PLATFORM[platformKey];
+    if (!platformConfig) {
+      throw new Error(`Unsupported platform for ripgrep: ${platform}-${arch}`);
+    }
+    const fileName = `ripgrep-${version}-${platformConfig.target}.${platformConfig.ext}`;
+    return `https://github.com/BurntSushi/ripgrep/releases/download/${version}/${fileName}`;
   }
   throw new Error(`Unknown runtime type: ${type}`);
 }
@@ -221,22 +468,37 @@ function getUvPlatformIdentifier(platform, arch) {
 
 // 检查URL是否可访问（不下载文件内容）
 async function checkUrlAccessibility(url, testId) {
+  let proxyDecision;
+  try {
+    proxyDecision = resolveProxyForUrl(url);
+  } catch (error) {
+    log(`✗ ${testId} - Proxy error: ${error.message} - ${url}`, 'red');
+    return { success: false, error: error.message };
+  }
+
+  const proxySuffix = proxyDecision.proxy
+    ? ` (proxy ${formatProxyConfig(proxyDecision.proxy)})`
+    : proxyDecision.reason === 'no_proxy'
+      ? ' (no_proxy)'
+      : '';
+
   try {
     const response = await axios.head(url, {
       timeout: 10000, // 10秒超时
       maxRedirects: 5,
-      validateStatus: (status) => status < 400 // 只要不是4xx或5xx错误就算成功
+      validateStatus: (status) => status < 400, // 只要不是4xx或5xx错误就算成功
+      proxy: proxyDecision.proxy ?? false,
     });
     
     const contentLength = response.headers['content-length'];
     const sizeInfo = contentLength ? ` (${Math.round(contentLength / 1024 / 1024 * 100) / 100}MB)` : '';
     
-    log(`✓ ${testId} - HTTP ${response.status}${sizeInfo} - ${url}`, 'green');
+    log(`✓ ${testId} - HTTP ${response.status}${sizeInfo}${proxySuffix} - ${url}`, 'green');
     return { success: true, status: response.status, size: contentLength };
   } catch (error) {
     if (error.response) {
       // 服务器响应了错误状态码
-      log(`✗ ${testId} - HTTP ${error.response.status} - ${url}`, 'red');
+      log(`✗ ${testId} - HTTP ${error.response.status}${proxySuffix} - ${url}`, 'red');
       return { 
         success: false, 
         status: error.response.status, 
@@ -244,7 +506,7 @@ async function checkUrlAccessibility(url, testId) {
       };
     } else {
       // 网络错误或其他错误
-      log(`✗ ${testId} - ${error.message} - ${url}`, 'red');
+      log(`✗ ${testId} - ${error.message}${proxySuffix} - ${url}`, 'red');
       return { 
         success: false, 
         error: error.message 
@@ -282,6 +544,7 @@ async function validateDownloadUrl(type, platform, arch, version) {
 
 async function runUrlValidationTests() {
   logHeader('下载链接可用性测试');
+  logProxySummary();
   
   const urlResults = [];
   let totalChecked = 0;
@@ -359,9 +622,10 @@ async function runUrlValidationTests() {
 
 function getDefaultVersion(type) {
   const defaultVersions = {
-    node: 'v22.9.0',
-    bun: 'v1.2.16',
-    uv: '0.7.13'
+    node: 'v24.12.0',
+    bun: 'v1.3.5',
+    uv: '0.9.18',
+    ripgrep: '14.1.1',
   };
   return defaultVersions[type];
 }
