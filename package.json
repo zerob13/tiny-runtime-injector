@@ -1,6 +1,6 @@
 {
   "name": "tiny-runtime-injector",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A library that helps you download complete, lightweight runtime environments like Node.js, Bun, and uv. It's useful for including minimal runtimes when building applications like Electron.",
   "main": "dist/index.js",
   "type": "module",
