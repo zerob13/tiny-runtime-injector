@@ -235,9 +235,10 @@ tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy 
 
 ### uv
 
-- ✅ Windows (x64, ARM64)
+- ✅ Windows (x64, x86, ARM64)
 - ✅ macOS (x64, ARM64)
-- ✅ Linux (x64, ARM64)
+- ✅ Linux (x64, x86, ARM64, ARMv7, PPC64, PPC64LE, s390x, RISCV64)
+- ✅ Linux MUSL (x64, x86, ARM64, ARM, ARMv7)
 
 ### ripgrep
 

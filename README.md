@@ -1,58 +1,58 @@
 # Tiny Runtime Injector
 
-一个帮助您为项目下载完整、轻量级运行时环境的库。它支持多种现代运行时，包括 Node.js、Bun、uv 和 ripgrep，非常适合在构建 Electron 等应用程序时包含轻量级运行时。
+A library that helps you download a complete, lightweight runtime environment for your project. It supports multiple modern runtimes, including Node.js, Bun, uv, and ripgrep, making it ideal for bundling lightweight runtimes when building apps like Electron.
 
-## 特性
+## Features
 
-- 🚀 支持多种运行时：Node.js、Bun、uv、ripgrep
-- 📦 自动下载和配置最新版本
-- 🎯 跨平台支持 (Windows, macOS, Linux)
-- 🔧 可配置的清理选项（Node.js）
-- 💻 命令行界面和编程 API
-- 📝 TypeScript 支持
+- 🚀 Supports multiple runtimes: Node.js, Bun, uv, ripgrep
+- 📦 Automatically downloads and configures the latest versions
+- 🎯 Cross-platform support (Windows, macOS, Linux)
+- 🔧 Configurable cleanup options (Node.js)
+- 💻 CLI and programmatic API
+- 📝 TypeScript support
 
-## 支持的运行时
+## Supported Runtimes
 
-| 运行时      | 描述                             | 默认版本 |
-| ----------- | -------------------------------- | -------- |
-| **Node.js** | JavaScript 运行时环境            | v24.12.0  |
-| **Bun**     | 快速的 JavaScript 运行时和工具包 | v1.3.5  |
-| **uv**      | Python 包管理器和解释器管理工具  | 0.9.18   |
-| **ripgrep** | 快速的文本搜索工具 (rg)          | 14.1.1   |
+| Runtime     | Description                                   | Default Version |
+| ----------- | --------------------------------------------- | --------------- |
+| **Node.js** | JavaScript runtime environment                | v24.12.0        |
+| **Bun**     | Fast JavaScript runtime and toolkit           | v1.3.5          |
+| **uv**      | Python package manager and interpreter manager | 0.9.18          |
+| **ripgrep** | Fast text search tool (rg)                    | 14.1.1          |
 
-## 安装
+## Installation
 
 ```bash
 npm install tiny-runtime-injector
 ```
 
-## 使用方法
+## Usage
 
-### 命令行界面
+### Command Line Interface
 
 ```bash
-# 安装 Node.js
+# Install Node.js
 tiny-runtime-injector --type node --runtime-version v24.12.0 --dir ./runtime/node
 
-# 安装 Bun
+# Install Bun
 tiny-runtime-injector --type bun --runtime-version v1.3.5 --dir ./runtime/bun
 
-# 安装 uv
+# Install uv
 tiny-runtime-injector --type uv --runtime-version 0.9.18 --dir ./runtime/uv
 
-# 安装 ripgrep
+# Install ripgrep
 tiny-runtime-injector --type ripgrep --runtime-version 14.1.1 --dir ./runtime/ripgrep
 
-# 查看所有选项
+# Show all options
 tiny-runtime-injector --help
 ```
 
-### 编程 API
+### Programmatic API
 
 ```javascript
 import { RuntimeInjector } from "tiny-runtime-injector";
 
-// 安装 Node.js
+// Install Node.js
 const nodeInjector = new RuntimeInjector({
   type: "node",
   version: "v24.12.0",
@@ -61,7 +61,7 @@ const nodeInjector = new RuntimeInjector({
 });
 await nodeInjector.inject();
 
-// 安装 Bun
+// Install Bun
 const bunInjector = new RuntimeInjector({
   type: "bun",
   version: "v1.3.5",
@@ -69,7 +69,7 @@ const bunInjector = new RuntimeInjector({
 });
 await bunInjector.inject();
 
-// 安装 uv
+// Install uv
 const uvInjector = new RuntimeInjector({
   type: "uv",
   version: "0.9.18",
@@ -77,7 +77,7 @@ const uvInjector = new RuntimeInjector({
 });
 await uvInjector.inject();
 
-// 安装 ripgrep
+// Install ripgrep
 const rgInjector = new RuntimeInjector({
   type: "ripgrep",
   version: "14.1.1",
@@ -86,38 +86,38 @@ const rgInjector = new RuntimeInjector({
 await rgInjector.inject();
 ```
 
-## 配置选项
+## Configuration Options
 
 ### RuntimeOptions
 
 ```typescript
 interface RuntimeOptions {
-  type?: "node" | "bun" | "uv" | "ripgrep"; // 运行时类型
-  version?: string; // 版本号
-  platform?: string; // 目标平台
-  arch?: string; // 目标架构
-  targetDir: string; // 安装目录
-  cleanup?: boolean | CleanupConfig; // 清理配置（仅 Node.js）
-  httpProxy?: string; // HTTP 代理 (同 HTTP_PROXY)
-  httpsProxy?: string; // HTTPS 代理 (同 HTTPS_PROXY)
-  noProxy?: string; // 不走代理的主机列表 (同 NO_PROXY)
+  type?: "node" | "bun" | "uv" | "ripgrep"; // Runtime type
+  version?: string; // Version
+  platform?: string; // Target platform
+  arch?: string; // Target architecture
+  targetDir: string; // Install directory
+  cleanup?: boolean | CleanupConfig; // Cleanup config (Node.js only)
+  httpProxy?: string; // HTTP proxy (same as HTTP_PROXY)
+  httpsProxy?: string; // HTTPS proxy (same as HTTPS_PROXY)
+  noProxy?: string; // Hosts that bypass the proxy (same as NO_PROXY)
 }
 ```
 
-### 清理配置（仅 Node.js）
+### Cleanup Configuration (Node.js only)
 
 ```typescript
 interface CleanupConfig {
-  removeDocs?: boolean; // 移除文档文件
-  removeDevFiles?: boolean; // 移除开发文件
-  removeSourceMaps?: boolean; // 移除源码映射
-  customRules?: CleanupRule[]; // 自定义规则
+  removeDocs?: boolean; // Remove documentation files
+  removeDevFiles?: boolean; // Remove development files
+  removeSourceMaps?: boolean; // Remove source maps
+  customRules?: CleanupRule[]; // Custom rules
 }
 ```
 
-## 使用示例
+## Examples
 
-### 在 Electron 项目中使用
+### Using in an Electron Project
 
 ```javascript
 import { RuntimeInjector } from "tiny-runtime-injector";
@@ -126,7 +126,7 @@ import path from "path";
 async function setupRuntimes() {
   const runtimeDir = path.join(__dirname, "resources", "runtimes");
 
-  // 设置 Node.js 用于后端处理
+  // Set up Node.js for backend processing
   const nodeInjector = new RuntimeInjector({
     type: "node",
     version: "v24.12.0",
@@ -138,14 +138,14 @@ async function setupRuntimes() {
     },
   });
 
-  // 设置 Bun 用于快速脚本执行
+  // Set up Bun for fast script execution
   const bunInjector = new RuntimeInjector({
     type: "bun",
     version: "v1.3.5",
     targetDir: path.join(runtimeDir, "bun"),
   });
 
-  // 设置 uv 用于 Python 包管理
+  // Set up uv for Python package management
   const uvInjector = new RuntimeInjector({
     type: "uv",
     version: "0.9.18",
@@ -165,15 +165,15 @@ async function setupRuntimes() {
     rgInjector.inject(),
   ]);
 
-  console.log("所有运行时设置完成！");
+  console.log("All runtimes are ready!");
 }
 
 setupRuntimes().catch(console.error);
 ```
 
-### 配置文件支持
+### Configuration File Support
 
-创建 `runtime-config.json`：
+Create `runtime-config.json`:
 
 ```json
 {
@@ -197,15 +197,15 @@ setupRuntimes().catch(console.error);
 }
 ```
 
-使用配置文件：
+Use the config file:
 
 ```bash
 tiny-runtime-injector --config runtime-config.json
 ```
 
-## 代理设置
+## Proxy Settings
 
-### 环境变量
+### Environment Variables
 
 ```bash
 export HTTP_PROXY="http://127.0.0.1:7890"
@@ -213,13 +213,13 @@ export HTTPS_PROXY="http://127.0.0.1:7890"
 export NO_PROXY="localhost,127.0.0.1"
 ```
 
-### 命令行参数
+### Command Line Arguments
 
 ```bash
 tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy "localhost,127.0.0.1"
 ```
 
-## 平台支持
+## Platform Support
 
 ### Node.js
 
@@ -246,85 +246,85 @@ tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy 
 - ✅ macOS (x64, ARM64)
 - ✅ Linux (x64, ARM64)
 
-## 运行时特定说明
+## Runtime-Specific Notes
 
 ### Node.js
 
-- 包含完整的 Node.js 运行时和 npm
-- 支持清理选项以减少文件大小
-- 可执行文件：`node.exe` (Windows) 或 `bin/node` (Unix)
+- Includes the full Node.js runtime and npm
+- Supports cleanup options to reduce file size
+- Executable: `node.exe` (Windows) or `bin/node` (Unix)
 
 ### Bun
 
-- 单个可执行文件，包含运行时和包管理器
-- 无需额外清理，已经很轻量
-- 可执行文件：`bun.exe` (Windows) 或 `bun` (Unix)
+- Single executable with runtime and package manager
+- No extra cleanup required; already lightweight
+- Executable: `bun.exe` (Windows) or `bun` (Unix)
 
 ### uv
 
-- 包含 `uv` 和 `uvx` 两个可执行文件
-- `uv`：Python 包管理器
-- `uvx`：工具执行器
-- 可执行文件：`uv.exe`/`uvx.exe` (Windows) 或 `uv`/`uvx` (Unix)
+- Includes `uv` and `uvx` executables
+- `uv`: Python package manager
+- `uvx`: tool runner
+- Executable: `uv.exe`/`uvx.exe` (Windows) or `uv`/`uvx` (Unix)
 
 ### ripgrep
 
-- 单个可执行文件，用于快速文本搜索
-- 可执行文件：`rg.exe` (Windows) 或 `rg` (Unix)
+- Single executable for fast text search
+- Executable: `rg.exe` (Windows) or `rg` (Unix)
 
-## API 参考
+## API Reference
 
-### RuntimeInjector 类
+### RuntimeInjector Class
 
-#### 构造函数
+#### Constructor
 
 ```typescript
 constructor(options: RuntimeOptions)
 ```
 
-#### 方法
+#### Methods
 
 ```typescript
 async inject(): Promise<void>
 ```
 
-下载并设置指定的运行时环境。
+Downloads and sets up the specified runtime environment.
 
-## 故障排除
+## Troubleshooting
 
-### 常见问题
+### Common Issues
 
-1. **下载失败**
+1. **Download failed**
 
-   - 检查网络连接
-   - 验证版本号是否正确
-   - 确保目标目录有写入权限
+   - Check network connectivity
+   - Verify the version number is correct
+   - Ensure the target directory is writable
 
-2. **可执行文件无法运行**
+2. **Executable won't run**
 
-   - 在 Unix 系统上，检查文件权限（应该是 755）
-   - 验证架构兼容性
+   - On Unix systems, check file permissions (should be 755)
+   - Verify architecture compatibility
 
-3. **版本不匹配**
-   - 使用正确的版本格式：
+3. **Version mismatch**
+   - Use the correct version formats:
     - Node.js: `v24.12.0`
     - Bun: `v1.3.5`
     - uv: `0.9.18`
     - ripgrep: `14.1.1`
 
-## 贡献
+## Contributing
 
-欢迎贡献！请查看我们的贡献指南。
+Contributions are welcome! Please see our contribution guide.
 
-## 许可证
+## License
 
 MIT
 
-## 更新日志
+## Changelog
 
 ### v1.0.0
 
-- ✨ 添加对 Bun 和 uv 的支持
-- 🔧 重构为支持多运行时架构
-- 📝 更新文档和示例
-- 🐛 修复跨平台兼容性问题
+- ✨ Add support for Bun and uv
+- 🔧 Refactor to support a multi-runtime architecture
+- 📝 Update documentation and examples
+- 🐛 Fix cross-platform compatibility issues
