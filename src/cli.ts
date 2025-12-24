@@ -5,19 +5,19 @@ import { RuntimeInjector } from "./index.js";
 import fs from "fs-extra";
 import path from "path";
 import { fileURLToPath } from "url";
-import { RuntimeType } from "./types.js";
+import { RuntimeType, RuntimeOptions } from "./types.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 program
   .name("tiny-runtime-injector")
-  .description("下载并配置最小化的运行时环境 (Node.js, Bun, uv)")
+  .description("下载并配置最小化的运行时环境 (Node.js, Bun, uv, ripgrep)")
   .version("1.0.0")
-  .option("-t, --type <type>", "运行时类型 (node, bun, uv)", "node")
+  .option("-t, --type <type>", "运行时类型 (node, bun, uv, ripgrep)", "node")
   .option(
     "-r, --runtime-version <version>",
-    "运行时版本 (例如: v22.9.0 for node, v1.2.16 for bun, 0.7.13 for uv)"
+    "运行时版本 (例如: v24.12.0 for node, v1.3.5 for bun, 0.9.18 for uv)"
   )
   .option("-d, --dir <directory>", "目标目录", "./runtime")
   .option("-p, --platform <platform>", "目标平台")
@@ -27,6 +27,9 @@ program
   .option("--no-docs", "保留文档文件 (仅对 Node.js 有效)")
   .option("--no-dev", "保留开发文件 (仅对 Node.js 有效)")
   .option("--no-sourcemaps", "保留源码映射文件 (仅对 Node.js 有效)")
+  .option("--http-proxy <url>", "HTTP 代理 (同 HTTP_PROXY)")
+  .option("--https-proxy <url>", "HTTPS 代理 (同 HTTPS_PROXY)")
+  .option("--no-proxy <list>", "不走代理的主机列表 (同 NO_PROXY)")
   .option(
     "--custom-rules <rules>",
     "自定义清理规则 (JSON 字符串, 仅对 Node.js 有效)"
@@ -40,7 +43,7 @@ async function main() {
     let config = {};
 
     // Validate runtime type
-    const validTypes: RuntimeType[] = ["node", "bun", "uv"];
+    const validTypes: RuntimeType[] = ["node", "bun", "uv", "ripgrep"];
     if (!validTypes.includes(options.type as RuntimeType)) {
       console.error(
         `错误: 不支持的运行时类型 "${
@@ -68,20 +71,24 @@ async function main() {
     // Display runtime-specific help
     if (options.type === "node") {
       console.log("正在安装 Node.js 运行时...");
-      console.log("默认版本: v22.9.0");
+      console.log("默认版本: v24.12.0");
       console.log("支持清理选项以减小运行时大小");
     } else if (options.type === "bun") {
       console.log("正在安装 Bun 运行时...");
-      console.log("默认版本: v1.2.16");
+      console.log("默认版本: v1.3.5");
       console.log("将安装单个 bun 可执行文件");
     } else if (options.type === "uv") {
       console.log("正在安装 uv 运行时...");
-      console.log("默认版本: 0.7.13");
+      console.log("默认版本: 0.9.18");
       console.log("将安装 uv 和 uvx 可执行文件");
+    } else if (options.type === "ripgrep") {
+      console.log("正在安装 ripgrep 运行时...");
+      console.log("默认版本: 14.1.1");
+      console.log("将安装单个 rg 可执行文件");
     }
 
     // 合并命令行参数和配置文件
-    const runtimeOptions = {
+    const runtimeOptions: RuntimeOptions = {
       ...config,
       type: options.type as RuntimeType,
       version: options.runtimeVersion,
@@ -98,7 +105,17 @@ async function main() {
               : undefined,
           }
         : false,
-    };
+    } as RuntimeOptions;
+
+    if (options.httpProxy !== undefined) {
+      runtimeOptions.httpProxy = options.httpProxy;
+    }
+    if (options.httpsProxy !== undefined) {
+      runtimeOptions.httpsProxy = options.httpsProxy;
+    }
+    if (options.noProxy !== undefined) {
+      runtimeOptions.noProxy = options.noProxy;
+    }
 
     const injector = new RuntimeInjector(runtimeOptions);
     await injector.inject();
@@ -132,6 +149,13 @@ async function main() {
           process.platform === "win32" ? "uvx.exe" : "uvx"
         )}`
       );
+    } else if (options.type === "ripgrep") {
+      console.log(
+        `ripgrep 可执行文件位置: ${path.join(
+          defaultDir,
+          process.platform === "win32" ? "rg.exe" : "rg"
+        )}`
+      );
     }
   } catch (error) {
     console.error("安装失败:", error);
@@ -144,19 +168,23 @@ program.on("--help", () => {
   console.log("");
   console.log("使用示例:");
   console.log(
-    "  $ tiny-runtime-injector --type node --runtime-version v22.9.0 --dir ./runtime/node"
+    "  $ tiny-runtime-injector --type node --runtime-version v24.12.0 --dir ./runtime/node"
   );
   console.log(
-    "  $ tiny-runtime-injector --type bun --runtime-version v1.2.16 --dir ./runtime/bun"
+    "  $ tiny-runtime-injector --type bun --runtime-version v1.3.5 --dir ./runtime/bun"
   );
   console.log(
-    "  $ tiny-runtime-injector --type uv --runtime-version 0.7.13 --dir ./runtime/uv"
+    "  $ tiny-runtime-injector --type uv --runtime-version 0.9.18 --dir ./runtime/uv"
+  );
+  console.log(
+    "  $ tiny-runtime-injector --type ripgrep --runtime-version 14.1.1 --dir ./runtime/ripgrep"
   );
   console.log("");
   console.log("支持的运行时:");
-  console.log("  node    - Node.js JavaScript运行时");
-  console.log("  bun     - Bun JavaScript运行时和工具包");
-  console.log("  uv      - Python包管理器和解释器管理工具");
+  console.log("  node     - Node.js JavaScript运行时");
+  console.log("  bun      - Bun JavaScript运行时和工具包");
+  console.log("  uv       - Python包管理器和解释器管理工具");
+  console.log("  ripgrep  - 快速的文本搜索工具");
   console.log("");
 });
 

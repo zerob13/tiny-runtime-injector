@@ -1,10 +1,10 @@
 # Tiny Runtime Injector
 
-一个帮助您为项目下载完整、轻量级运行时环境的库。它支持多种现代运行时，包括 Node.js、Bun 和 uv，非常适合在构建 Electron 等应用程序时包含轻量级运行时。
+一个帮助您为项目下载完整、轻量级运行时环境的库。它支持多种现代运行时，包括 Node.js、Bun、uv 和 ripgrep，非常适合在构建 Electron 等应用程序时包含轻量级运行时。
 
 ## 特性
 
-- 🚀 支持多种运行时：Node.js、Bun、uv
+- 🚀 支持多种运行时：Node.js、Bun、uv、ripgrep
 - 📦 自动下载和配置最新版本
 - 🎯 跨平台支持 (Windows, macOS, Linux)
 - 🔧 可配置的清理选项（Node.js）
@@ -15,9 +15,10 @@
 
 | 运行时      | 描述                             | 默认版本 |
 | ----------- | -------------------------------- | -------- |
-| **Node.js** | JavaScript 运行时环境            | v22.9.0  |
-| **Bun**     | 快速的 JavaScript 运行时和工具包 | v1.2.16  |
-| **uv**      | Python 包管理器和解释器管理工具  | 0.7.13   |
+| **Node.js** | JavaScript 运行时环境            | v24.12.0  |
+| **Bun**     | 快速的 JavaScript 运行时和工具包 | v1.3.5  |
+| **uv**      | Python 包管理器和解释器管理工具  | 0.9.18   |
+| **ripgrep** | 快速的文本搜索工具 (rg)          | 14.1.1   |
 
 ## 安装
 
@@ -31,13 +32,16 @@ npm install tiny-runtime-injector
 
 ```bash
 # 安装 Node.js
-tiny-runtime-injector --type node --version v22.9.0 --dir ./runtime/node
+tiny-runtime-injector --type node --runtime-version v24.12.0 --dir ./runtime/node
 
 # 安装 Bun
-tiny-runtime-injector --type bun --version v1.2.16 --dir ./runtime/bun
+tiny-runtime-injector --type bun --runtime-version v1.3.5 --dir ./runtime/bun
 
 # 安装 uv
-tiny-runtime-injector --type uv --version 0.7.13 --dir ./runtime/uv
+tiny-runtime-injector --type uv --runtime-version 0.9.18 --dir ./runtime/uv
+
+# 安装 ripgrep
+tiny-runtime-injector --type ripgrep --runtime-version 14.1.1 --dir ./runtime/ripgrep
 
 # 查看所有选项
 tiny-runtime-injector --help
@@ -51,7 +55,7 @@ import { RuntimeInjector } from "tiny-runtime-injector";
 // 安装 Node.js
 const nodeInjector = new RuntimeInjector({
   type: "node",
-  version: "v22.9.0",
+  version: "v24.12.0",
   targetDir: "./runtime/node",
   cleanup: true,
 });
@@ -60,7 +64,7 @@ await nodeInjector.inject();
 // 安装 Bun
 const bunInjector = new RuntimeInjector({
   type: "bun",
-  version: "v1.2.16",
+  version: "v1.3.5",
   targetDir: "./runtime/bun",
 });
 await bunInjector.inject();
@@ -68,10 +72,18 @@ await bunInjector.inject();
 // 安装 uv
 const uvInjector = new RuntimeInjector({
   type: "uv",
-  version: "0.7.13",
+  version: "0.9.18",
   targetDir: "./runtime/uv",
 });
 await uvInjector.inject();
+
+// 安装 ripgrep
+const rgInjector = new RuntimeInjector({
+  type: "ripgrep",
+  version: "14.1.1",
+  targetDir: "./runtime/ripgrep",
+});
+await rgInjector.inject();
 ```
 
 ## 配置选项
@@ -80,12 +92,15 @@ await uvInjector.inject();
 
 ```typescript
 interface RuntimeOptions {
-  type?: "node" | "bun" | "uv"; // 运行时类型
+  type?: "node" | "bun" | "uv" | "ripgrep"; // 运行时类型
   version?: string; // 版本号
   platform?: string; // 目标平台
   arch?: string; // 目标架构
   targetDir: string; // 安装目录
   cleanup?: boolean | CleanupConfig; // 清理配置（仅 Node.js）
+  httpProxy?: string; // HTTP 代理 (同 HTTP_PROXY)
+  httpsProxy?: string; // HTTPS 代理 (同 HTTPS_PROXY)
+  noProxy?: string; // 不走代理的主机列表 (同 NO_PROXY)
 }
 ```
 
@@ -114,7 +129,7 @@ async function setupRuntimes() {
   // 设置 Node.js 用于后端处理
   const nodeInjector = new RuntimeInjector({
     type: "node",
-    version: "v22.9.0",
+    version: "v24.12.0",
     targetDir: path.join(runtimeDir, "node"),
     cleanup: {
       removeDocs: true,
@@ -126,21 +141,28 @@ async function setupRuntimes() {
   // 设置 Bun 用于快速脚本执行
   const bunInjector = new RuntimeInjector({
     type: "bun",
-    version: "v1.2.16",
+    version: "v1.3.5",
     targetDir: path.join(runtimeDir, "bun"),
   });
 
   // 设置 uv 用于 Python 包管理
   const uvInjector = new RuntimeInjector({
     type: "uv",
-    version: "0.7.13",
+    version: "0.9.18",
     targetDir: path.join(runtimeDir, "uv"),
+  });
+
+  const rgInjector = new RuntimeInjector({
+    type: "ripgrep",
+    version: "14.1.1",
+    targetDir: path.join(runtimeDir, "ripgrep"),
   });
 
   await Promise.all([
     nodeInjector.inject(),
     bunInjector.inject(),
     uvInjector.inject(),
+    rgInjector.inject(),
   ]);
 
   console.log("所有运行时设置完成！");
@@ -156,7 +178,7 @@ setupRuntimes().catch(console.error);
 ```json
 {
   "type": "node",
-  "version": "v22.9.0",
+  "version": "v24.12.0",
   "targetDir": "./runtime/node",
   "cleanup": {
     "removeDocs": true,
@@ -168,7 +190,10 @@ setupRuntimes().catch(console.error);
         "description": "Remove test files"
       }
     ]
-  }
+  },
+  "httpProxy": "http://127.0.0.1:7890",
+  "httpsProxy": "http://127.0.0.1:7890",
+  "noProxy": "localhost,127.0.0.1"
 }
 ```
 
@@ -176,6 +201,22 @@ setupRuntimes().catch(console.error);
 
 ```bash
 tiny-runtime-injector --config runtime-config.json
+```
+
+## 代理设置
+
+### 环境变量
+
+```bash
+export HTTP_PROXY="http://127.0.0.1:7890"
+export HTTPS_PROXY="http://127.0.0.1:7890"
+export NO_PROXY="localhost,127.0.0.1"
+```
+
+### 命令行参数
+
+```bash
+tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy "localhost,127.0.0.1"
 ```
 
 ## 平台支持
@@ -193,6 +234,12 @@ tiny-runtime-injector --config runtime-config.json
 - ✅ Linux (x64, ARM64)
 
 ### uv
+
+- ✅ Windows (x64, ARM64)
+- ✅ macOS (x64, ARM64)
+- ✅ Linux (x64, ARM64)
+
+### ripgrep
 
 - ✅ Windows (x64, ARM64)
 - ✅ macOS (x64, ARM64)
@@ -218,6 +265,11 @@ tiny-runtime-injector --config runtime-config.json
 - `uv`：Python 包管理器
 - `uvx`：工具执行器
 - 可执行文件：`uv.exe`/`uvx.exe` (Windows) 或 `uv`/`uvx` (Unix)
+
+### ripgrep
+
+- 单个可执行文件，用于快速文本搜索
+- 可执行文件：`rg.exe` (Windows) 或 `rg` (Unix)
 
 ## API 参考
 
@@ -254,9 +306,10 @@ async inject(): Promise<void>
 
 3. **版本不匹配**
    - 使用正确的版本格式：
-     - Node.js: `v22.9.0`
-     - Bun: `v1.2.16`
-     - uv: `0.7.13`
+    - Node.js: `v24.12.0`
+    - Bun: `v1.3.5`
+    - uv: `0.9.18`
+    - ripgrep: `14.1.1`
 
 ## 贡献
 

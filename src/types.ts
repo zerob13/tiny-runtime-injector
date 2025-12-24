@@ -1,4 +1,4 @@
-export type RuntimeType = "node" | "bun" | "uv";
+export type RuntimeType = "node" | "bun" | "uv" | "ripgrep";
 
 export interface RuntimeOptions {
   type?: RuntimeType;
@@ -7,6 +7,9 @@ export interface RuntimeOptions {
   arch?: string;
   targetDir: string;
   cleanup?: boolean | CleanupConfig;
+  httpProxy?: string;
+  httpsProxy?: string;
+  noProxy?: string;
 }
 
 export interface CleanupConfig {
@@ -33,7 +36,7 @@ export interface RuntimeInfo {
 export interface RuntimeConfig {
   defaultVersion: string;
   getDownloadUrl: (version: string, platform: string, arch: string) => string;
-  getFileExtension: (platform: string) => string;
+  getFileExtension: (platform: string, arch: string) => string;
   getExecutablePath: (targetDir: string, platform: string) => string;
   extractFiles?: (
     extractedDir: string,
