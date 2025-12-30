@@ -74,6 +74,18 @@ const testConfigs = [
       { platform: 'linux', arch: 'x64' },
       { platform: 'linux', arch: 'arm64' },
     ]
+  },
+  // Python configurations
+  {
+    type: 'python',
+    platforms: [
+      { platform: 'win32', arch: 'x64' },
+      { platform: 'win32', arch: 'arm64' },
+      { platform: 'darwin', arch: 'x64' },
+      { platform: 'darwin', arch: 'arm64' },
+      { platform: 'linux', arch: 'x64' },
+      { platform: 'linux', arch: 'arm64' },
+    ]
   }
 ];
 
@@ -398,6 +410,12 @@ function generateDownloadUrl(type, platform, arch, version) {
     }
     const fileName = `ripgrep-${version}-${platformConfig.target}.${platformConfig.ext}`;
     return `https://github.com/BurntSushi/ripgrep/releases/download/${version}/${fileName}`;
+  } else if (type === 'python') {
+    const platformTarget = getPythonPlatformIdentifier(platform, arch);
+    const releaseDate = version.includes('+') ? version.split('+')[1] : '20250117';
+    const pythonVersion = version.includes('+') ? version.split('+')[0] : version;
+    const fileName = `cpython-${pythonVersion}+${releaseDate}-${platformTarget}-install_only.tar.gz`;
+    return `https://github.com/astral-sh/python-build-standalone/releases/download/${releaseDate}/${fileName}`;
   }
   throw new Error(`Unknown runtime type: ${type}`);
 }
@@ -464,6 +482,34 @@ function getUvPlatformIdentifier(platform, arch) {
   }
 
   throw new Error(`Unsupported platform for uv: ${platform}-${arch}`);
+}
+
+function getPythonPlatformIdentifier(platform, arch) {
+  const archStr = String(arch);
+
+  if (platform === "darwin") {
+    return archStr === "arm64"
+    ? "aarch64-apple-darwin"
+    : "x86_64-apple-darwin";
+  } else if (platform === "linux") {
+    if (arch === "arm64") return "aarch64-unknown-linux-gnu";
+    if (arch === "x64" || arch === "x86_64") return "x86_64-unknown-linux-gnu";
+
+    throw new Error(
+      `Unsupported platform for Python: ${platform}-${archStr}. Only x64 and arm64 are supported for Linux.`
+    );
+  } else if (platform === "win32") {
+    if (arch === "x64" || arch === "x86_64") return "x86_64-pc-windows-msvc";
+    if (arch === "arm64") return "aarch64-pc-windows-msvc";
+
+    throw new Error(
+      `Unsupported platform for Python: ${platform}-${archStr}. Only x64 and arm64 are supported for Windows.`
+    );
+  }
+
+  throw new Error(
+    `Unsupported platform for Python: ${platform}-${archStr}`
+  );
 }
 
 // 检查URL是否可访问（不下载文件内容）
@@ -626,6 +672,7 @@ function getDefaultVersion(type) {
     bun: 'v1.3.5',
     uv: '0.9.18',
     ripgrep: '14.1.1',
+    python: '3.12.12+20251217',
   };
   return defaultVersions[type];
 }

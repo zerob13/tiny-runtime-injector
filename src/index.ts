@@ -35,6 +35,7 @@ const DEFAULT_VERSIONS = {
   bun: "v1.3.5",
   uv: "0.9.18",
   ripgrep: "14.1.1",
+  python: "3.12.12+20251217",
 };
 
 // Runtime configurations
@@ -224,6 +225,45 @@ const RUNTIME_CONFIGS: Record<RuntimeType, RuntimeConfig> = {
       await fs.move(rgPath, destPath, { overwrite: true });
     },
   },
+  python: {
+    defaultVersion: DEFAULT_VERSIONS.python,
+    getDownloadUrl: (version: string, platform: string, arch: string) => {
+      const platformTarget = getPythonPlatformIdentifier(platform, arch);
+      const releaseDate = version.includes("+") ? version.split("+")[1] : "20250117";
+      const pythonVersion = version.includes("+") ? version.split("+")[0] : version;
+      const fileName = `cpython-${pythonVersion}+${releaseDate}-${platformTarget}-install_only.tar.gz`;
+      return `https://github.com/astral-sh/python-build-standalone/releases/download/${releaseDate}/${fileName}`;
+    },
+    getFileExtension: (platform: string, arch: string) => "tar.gz",
+    getExecutablePath: (targetDir: string, platform: string) =>
+      path.join(targetDir, "bin", platform === "win32" ? "python.exe" : "python3"),
+    extractFiles: async (
+      extractedDir: string,
+      targetDir: string,
+      version: string,
+      platform: string,
+      arch: string
+    ) => {
+      const files = await fs.readdir(extractedDir);
+
+      // Python standalone tarball extracts to a python directory
+      const pythonDir = files.find((f) => f === "python");
+
+      if (!pythonDir) {
+        throw new Error(`Could not find python directory in extracted files`);
+      }
+
+      const extractedPythonDir = path.join(extractedDir, pythonDir);
+
+      // Move all contents from python directory to target directory
+      const pythonFiles = await fs.readdir(extractedPythonDir);
+      for (const file of pythonFiles) {
+        const srcPath = path.join(extractedPythonDir, file);
+        const destPath = path.join(targetDir, file);
+        await fs.move(srcPath, destPath, { overwrite: true });
+      }
+    },
+  },
 };
 
 function getNodePlatformIdentifier(platform: string, arch: string): string {
@@ -299,6 +339,38 @@ function getRipgrepPlatformIdentifier(platform: string, arch: string): string {
   }
 
   throw new Error(`Unsupported platform for ripgrep: ${platform}-${arch}`);
+}
+
+function getPythonPlatformIdentifier(platform: string, arch: string): string {
+  const archStr = String(arch);
+
+  if (platform === "darwin") {
+    return archStr === "arm64"
+      ? "aarch64-apple-darwin"
+      : "x86_64-apple-darwin";
+  } else if (platform === "linux") {
+    // Linux only supports x64 and arm64 (as per requirements)
+    if (archStr === "arm64") return "aarch64-unknown-linux-gnu";
+    if (archStr === "x64" || archStr === "x86_64") return "x86_64-unknown-linux-gnu";
+
+    // Other Linux architectures are not supported as per requirements
+    throw new Error(
+      `Unsupported platform for Python: ${platform}-${archStr}. Only x64 and arm64 are supported for Linux.`
+    );
+  } else if (platform === "win32") {
+    // Windows only supports x64 (as per requirements)
+    if (archStr === "x64" || archStr === "x86_64") return "x86_64-pc-windows-msvc";
+    if (archStr === "arm64") return "aarch64-pc-windows-msvc";
+
+    // Windows x86 is not supported by python-build-standalone
+    throw new Error(
+      `Unsupported platform for Python: ${platform}-${archStr}. Only x64 and arm64 are supported for Windows.`
+    );
+  }
+
+  throw new Error(
+    `Unsupported platform for Python: ${platform}-${archStr}`
+  );
 }
 
 const PROXY_ENV_KEYS = {
@@ -533,6 +605,9 @@ export class RuntimeInjector {
                 case "ripgrep":
                   testCommand = `"${execPath}" --version`;
                   break;
+                case "python":
+                  testCommand = `"${execPath}" --version`;
+                  break;
                 default:
                   throw new Error(
                     `Unknown runtime type: ${this.runtimeInfo.type}`
@@ -553,6 +628,11 @@ export class RuntimeInjector {
                 return actualVersion.includes(this.runtimeInfo.version);
               } else if (this.runtimeInfo.type === "ripgrep") {
                 return actualVersion.includes(this.runtimeInfo.version);
+              } else if (this.runtimeInfo.type === "python") {
+                const pythonVersion = this.runtimeInfo.version.includes("+")
+                  ? this.runtimeInfo.version.split("+")[0]
+                  : this.runtimeInfo.version;
+                return actualVersion.includes(pythonVersion);
               }
 
               return true;
@@ -807,6 +887,21 @@ export class RuntimeInjector {
 
         // For Node.js, set permissions for all binaries
         if (this.runtimeInfo.type === "node") {
+          const binDir = path.join(this.runtimeInfo.targetDir, "bin");
+          if (await fs.pathExists(binDir)) {
+            const binFiles = await fs.readdir(binDir);
+            for (const file of binFiles) {
+              const filePath = path.join(binDir, file);
+              const stats = await fs.stat(filePath);
+              if (stats.isFile()) {
+                await fs.chmod(filePath, 0o755);
+              }
+            }
+          }
+        }
+
+        // For Python, set permissions for all files in bin directory
+        if (this.runtimeInfo.type === "python") {
           const binDir = path.join(this.runtimeInfo.targetDir, "bin");
           if (await fs.pathExists(binDir)) {
             const binFiles = await fs.readdir(binDir);

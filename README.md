@@ -1,10 +1,10 @@
 # Tiny Runtime Injector
 
-A library that helps you download a complete, lightweight runtime environment for your project. It supports multiple modern runtimes, including Node.js, Bun, uv, and ripgrep, making it ideal for bundling lightweight runtimes when building apps like Electron.
+A library that helps you download a complete, lightweight runtime environment for your project. It supports multiple modern runtimes, including Node.js, Bun, uv, ripgrep, and Python, making it ideal for bundling lightweight runtimes when building apps like Electron.
 
 ## Features
 
-- 🚀 Supports multiple runtimes: Node.js, Bun, uv, ripgrep
+- 🚀 Supports multiple runtimes: Node.js, Bun, uv, ripgrep, Python
 - 📦 Automatically downloads and configures the latest versions
 - 🎯 Cross-platform support (Windows, macOS, Linux)
 - 🔧 Configurable cleanup options (Node.js)
@@ -19,6 +19,7 @@ A library that helps you download a complete, lightweight runtime environment fo
 | **Bun**     | Fast JavaScript runtime and toolkit           | v1.3.5          |
 | **uv**      | Python package manager and interpreter manager | 0.9.18          |
 | **ripgrep** | Fast text search tool (rg)                    | 14.1.1          |
+| **Python**  | Python runtime environment                    | 3.12.8+20250117 |
 
 ## Installation
 
@@ -42,6 +43,9 @@ tiny-runtime-injector --type uv --runtime-version 0.9.18 --dir ./runtime/uv
 
 # Install ripgrep
 tiny-runtime-injector --type ripgrep --runtime-version 14.1.1 --dir ./runtime/ripgrep
+
+# Install Python
+tiny-runtime-injector --type python --runtime-version 3.12.8+20250117 --dir ./runtime/python
 
 # Show all options
 tiny-runtime-injector --help
@@ -84,6 +88,14 @@ const rgInjector = new RuntimeInjector({
   targetDir: "./runtime/ripgrep",
 });
 await rgInjector.inject();
+
+// Install Python
+const pythonInjector = new RuntimeInjector({
+  type: "python",
+  version: "3.12.8+20250117",
+  targetDir: "./runtime/python",
+});
+await pythonInjector.inject();
 ```
 
 ## Configuration Options
@@ -92,7 +104,7 @@ await rgInjector.inject();
 
 ```typescript
 interface RuntimeOptions {
-  type?: "node" | "bun" | "uv" | "ripgrep"; // Runtime type
+  type?: "node" | "bun" | "uv" | "ripgrep" | "python"; // Runtime type
   version?: string; // Version
   platform?: string; // Target platform
   arch?: string; // Target architecture
@@ -246,6 +258,14 @@ tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy 
 - ✅ macOS (x64, ARM64)
 - ✅ Linux (x64, ARM64)
 
+### Python
+
+- ✅ Windows (x64, ARM64)
+- ✅ macOS (x64, ARM64)
+- ✅ Linux (x64, ARM64)
+- ⚠️ Note: Only x64 and ARM64 are supported for Linux (other architectures not supported)
+- ⚠️ Note: Windows x86 is not supported
+
 ## Runtime-Specific Notes
 
 ### Node.js
@@ -271,6 +291,14 @@ tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy 
 
 - Single executable for fast text search
 - Executable: `rg.exe` (Windows) or `rg` (Unix)
+
+### Python
+
+- Self-contained Python runtime from python-build-standalone project
+- Includes pip for package management
+- Executable: `python.exe` (Windows) or `bin/python3` (Unix)
+- Version format: `{python_version}+{release_date}`, e.g., `3.12.8+20250117`
+⚠️ Note: Only x64 and ARM64 architectures are supported
 
 ## API Reference
 

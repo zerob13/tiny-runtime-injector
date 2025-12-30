@@ -12,9 +12,9 @@ const __dirname = path.dirname(__filename);
 
 program
   .name("tiny-runtime-injector")
-  .description("下载并配置最小化的运行时环境 (Node.js, Bun, uv, ripgrep)")
+  .description("下载并配置最小化的运行时环境 (Node.js, Bun, uv, ripgrep, Python)")
   .version("1.0.0")
-  .option("-t, --type <type>", "运行时类型 (node, bun, uv, ripgrep)", "node")
+  .option("-t, --type <type>", "运行时类型 (node, bun, uv, ripgrep, python)", "node")
   .option(
     "-r, --runtime-version <version>",
     "运行时版本 (例如: v24.12.0 for node, v1.3.5 for bun, 0.9.18 for uv)"
@@ -43,7 +43,7 @@ async function main() {
     let config = {};
 
     // Validate runtime type
-    const validTypes: RuntimeType[] = ["node", "bun", "uv", "ripgrep"];
+    const validTypes: RuntimeType[] = ["node", "bun", "uv", "ripgrep", "python"];
     if (!validTypes.includes(options.type as RuntimeType)) {
       console.error(
         `错误: 不支持的运行时类型 "${
@@ -85,6 +85,11 @@ async function main() {
       console.log("正在安装 ripgrep 运行时...");
       console.log("默认版本: 14.1.1");
       console.log("将安装单个 rg 可执行文件");
+    } else if (options.type === "python") {
+      console.log("正在安装 Python 运行时...");
+      console.log("默认版本: 3.12.8+20250117");
+      console.log("将安装 Python 运行时环境，包含 pip");
+      console.log("平台支持: macOS (x64/ARM64), Linux (x64/ARM64), Windows (x64/ARM64)");
     }
 
     // 合并命令行参数和配置文件
@@ -156,6 +161,13 @@ async function main() {
           process.platform === "win32" ? "rg.exe" : "rg"
         )}`
       );
+    } else if (options.type === "python") {
+      console.log(
+        `Python 可执行文件位置: ${path.join(
+          defaultDir,
+          process.platform === "win32" ? "python.exe" : "bin/python3"
+        )}`
+      );
     }
   } catch (error) {
     console.error("安装失败:", error);
@@ -179,12 +191,16 @@ program.on("--help", () => {
   console.log(
     "  $ tiny-runtime-injector --type ripgrep --runtime-version 14.1.1 --dir ./runtime/ripgrep"
   );
+  console.log(
+    "  $ tiny-runtime-injector --type python --runtime-version 3.12.8+20250117 --dir ./runtime/python"
+  );
   console.log("");
   console.log("支持的运行时:");
   console.log("  node     - Node.js JavaScript运行时");
   console.log("  bun      - Bun JavaScript运行时和工具包");
   console.log("  uv       - Python包管理器和解释器管理工具");
   console.log("  ripgrep  - 快速的文本搜索工具");
+  console.log("  python   - Python 运行时环境");
   console.log("");
 });
 
