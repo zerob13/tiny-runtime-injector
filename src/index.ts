@@ -29,6 +29,17 @@ const RIPGREP_PLATFORM: Record<string, { target: string; ext: "tar.gz" | "zip" }
   "arm64-darwin": { target: "aarch64-apple-darwin", ext: "tar.gz" },
 };
 
+const RTK_PLATFORM: Record<string, { target: string; ext: "tar.gz" | "zip" }> = {
+  "x64-win32": { target: "x86_64-pc-windows-msvc", ext: "zip" },
+  "x64-linux": { target: "x86_64-unknown-linux-musl", ext: "tar.gz" },
+  "arm64-linux": { target: "aarch64-unknown-linux-gnu", ext: "tar.gz" },
+  "x64-darwin": { target: "x86_64-apple-darwin", ext: "tar.gz" },
+  "arm64-darwin": { target: "aarch64-apple-darwin", ext: "tar.gz" },
+};
+
+const RTK_SUPPORTED_PLATFORMS =
+  "darwin-x64, darwin-arm64, linux-x64, linux-arm64, win32-x64";
+
 // Default versions for each runtime
 const DEFAULT_VERSIONS = {
   node: "v24.12.0",
@@ -36,6 +47,7 @@ const DEFAULT_VERSIONS = {
   uv: "0.9.18",
   ripgrep: "14.1.1",
   python: "3.12.12+20251217",
+  rtk: "latest",
 };
 
 // Runtime configurations
@@ -264,6 +276,33 @@ const RUNTIME_CONFIGS: Record<RuntimeType, RuntimeConfig> = {
       }
     },
   },
+  rtk: {
+    defaultVersion: DEFAULT_VERSIONS.rtk,
+    getDownloadUrl: (version: string, platform: string, arch: string) => {
+      const fileName = getRtkAssetName(platform, arch);
+      return `https://github.com/rtk-ai/rtk/releases/download/${normalizeRtkVersion(version)}/${fileName}`;
+    },
+    getFileExtension: (platform: string, arch: string) =>
+      getRtkPlatformConfig(platform, arch).ext,
+    getExecutablePath: (targetDir: string, platform: string) =>
+      path.join(targetDir, platform === "win32" ? "rtk.exe" : "rtk"),
+    extractFiles: async (
+      extractedDir: string,
+      targetDir: string,
+      version: string,
+      platform: string,
+      arch: string
+    ) => {
+      const execName = platform === "win32" ? "rtk.exe" : "rtk";
+      const executablePath = await findExecutableInExtractedDir(
+        extractedDir,
+        execName
+      );
+      await fs.move(executablePath, path.join(targetDir, execName), {
+        overwrite: true,
+      });
+    },
+  },
 };
 
 function getNodePlatformIdentifier(platform: string, arch: string): string {
@@ -371,6 +410,60 @@ function getPythonPlatformIdentifier(platform: string, arch: string): string {
   throw new Error(
     `Unsupported platform for Python: ${platform}-${archStr}`
   );
+}
+
+function getRtkPlatformConfig(
+  platform: string,
+  arch: string
+): { target: string; ext: "tar.gz" | "zip" } {
+  const archStr = String(arch);
+  const platformKey = `${archStr}-${platform}`;
+  const platformConfig = RTK_PLATFORM[platformKey];
+
+  if (platformConfig) {
+    return platformConfig;
+  }
+
+  throw new Error(
+    `Unsupported platform for rtk: ${platform}-${archStr}. Supported targets: ${RTK_SUPPORTED_PLATFORMS}.`
+  );
+}
+
+function getRtkAssetName(platform: string, arch: string): string {
+  const platformConfig = getRtkPlatformConfig(platform, arch);
+  return `rtk-${platformConfig.target}.${platformConfig.ext}`;
+}
+
+function normalizeRtkVersion(version?: string): string {
+  if (!version || version === "latest") {
+    return "latest";
+  }
+
+  return version.startsWith("v") ? version : `v${version}`;
+}
+
+function stripVersionPrefix(version: string): string {
+  return version.startsWith("v") ? version.slice(1) : version;
+}
+
+async function findExecutableInExtractedDir(
+  extractedDir: string,
+  execName: string
+): Promise<string> {
+  const files = await fs.readdir(extractedDir);
+
+  if (files.includes(execName)) {
+    return path.join(extractedDir, execName);
+  }
+
+  for (const file of files) {
+    const execPath = path.join(extractedDir, file, execName);
+    if (await fs.pathExists(execPath)) {
+      return execPath;
+    }
+  }
+
+  throw new Error(`Could not find ${execName} in extracted files`);
 }
 
 const PROXY_ENV_KEYS = {
@@ -573,6 +666,62 @@ export class RuntimeInjector {
     };
   }
 
+  private updateResolvedVersion(version: string): void {
+    this.options.version = version;
+    this.runtimeInfo.version = version;
+  }
+
+  private async fetchLatestRtkRelease(): Promise<{
+    tagName: string;
+    assets: string[];
+  }> {
+    const releaseUrl = "https://api.github.com/repos/rtk-ai/rtk/releases/latest";
+    const proxyConfig = this.getProxyConfigForUrl(releaseUrl);
+    const response = await axios.get<{
+      tag_name: string;
+      assets?: Array<{ name: string }>;
+    }>(releaseUrl, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "tiny-runtime-injector",
+      },
+      proxy: proxyConfig ?? false,
+    });
+
+    return {
+      tagName: normalizeRtkVersion(response.data.tag_name),
+      assets: (response.data.assets ?? []).map((asset) => asset.name),
+    };
+  }
+
+  private async resolveRtkVersion(): Promise<void> {
+    if (this.runtimeInfo.type !== "rtk") {
+      return;
+    }
+
+    const normalizedVersion = normalizeRtkVersion(this.options.version);
+    if (normalizedVersion !== "latest") {
+      this.updateResolvedVersion(normalizedVersion);
+      return;
+    }
+
+    const expectedAsset = getRtkAssetName(
+      this.runtimeInfo.platform,
+      this.runtimeInfo.arch
+    );
+
+    console.log("Resolving latest rtk release...");
+    const release = await this.fetchLatestRtkRelease();
+    if (!release.assets.includes(expectedAsset)) {
+      throw new Error(
+        `Latest rtk release ${release.tagName} does not include asset ${expectedAsset} for ${this.runtimeInfo.platform}-${this.runtimeInfo.arch}`
+      );
+    }
+
+    this.updateResolvedVersion(release.tagName);
+    console.log(`Resolved latest rtk version: ${release.tagName}`);
+  }
+
   private async isAlreadyInstalled(): Promise<boolean> {
     try {
       const markerFile = path.join(
@@ -608,6 +757,9 @@ export class RuntimeInjector {
                 case "python":
                   testCommand = `"${execPath}" --version`;
                   break;
+                case "rtk":
+                  testCommand = `"${execPath}" --version`;
+                  break;
                 default:
                   throw new Error(
                     `Unknown runtime type: ${this.runtimeInfo.type}`
@@ -633,6 +785,10 @@ export class RuntimeInjector {
                   ? this.runtimeInfo.version.split("+")[0]
                   : this.runtimeInfo.version;
                 return actualVersion.includes(pythonVersion);
+              } else if (this.runtimeInfo.type === "rtk") {
+                return actualVersion.includes(
+                  stripVersionPrefix(this.runtimeInfo.version)
+                );
               }
 
               return true;
@@ -818,6 +974,8 @@ export class RuntimeInjector {
 
   public async inject(): Promise<void> {
     try {
+      await this.resolveRtkVersion();
+
       console.log(
         `Checking ${this.runtimeInfo.type} ${this.runtimeInfo.version} for ${this.runtimeInfo.platform}-${this.runtimeInfo.arch}`
       );

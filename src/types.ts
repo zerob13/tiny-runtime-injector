@@ -1,4 +1,10 @@
-export type RuntimeType = "node" | "bun" | "uv" | "ripgrep" | "python";
+export type RuntimeType =
+  | "node"
+  | "bun"
+  | "uv"
+  | "ripgrep"
+  | "python"
+  | "rtk";
 
 export interface RuntimeOptions {
   type?: RuntimeType;

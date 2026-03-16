@@ -12,12 +12,12 @@ const __dirname = path.dirname(__filename);
 
 program
   .name("tiny-runtime-injector")
-  .description("下载并配置最小化的运行时环境 (Node.js, Bun, uv, ripgrep, Python)")
+  .description("下载并配置最小化的运行时环境 (Node.js, Bun, uv, ripgrep, Python, rtk)")
   .version("1.0.0")
-  .option("-t, --type <type>", "运行时类型 (node, bun, uv, ripgrep, python)", "node")
+  .option("-t, --type <type>", "运行时类型 (node, bun, uv, ripgrep, python, rtk)", "node")
   .option(
     "-r, --runtime-version <version>",
-    "运行时版本 (例如: v24.12.0 for node, v1.3.5 for bun, 0.9.18 for uv)"
+    "运行时版本 (例如: v24.12.0 for node, v1.3.5 for bun, 0.9.18 for uv, latest/v0.30.0/0.30.0 for rtk)"
   )
   .option("-d, --dir <directory>", "目标目录", "./runtime")
   .option("-p, --platform <platform>", "目标平台")
@@ -43,7 +43,7 @@ async function main() {
     let config = {};
 
     // Validate runtime type
-    const validTypes: RuntimeType[] = ["node", "bun", "uv", "ripgrep", "python"];
+    const validTypes: RuntimeType[] = ["node", "bun", "uv", "ripgrep", "python", "rtk"];
     if (!validTypes.includes(options.type as RuntimeType)) {
       console.error(
         `错误: 不支持的运行时类型 "${
@@ -90,6 +90,11 @@ async function main() {
       console.log("默认版本: 3.12.8+20250117");
       console.log("将安装 Python 运行时环境，包含 pip");
       console.log("平台支持: macOS (x64/ARM64), Linux (x64/ARM64), Windows (x64/ARM64)");
+    } else if (options.type === "rtk") {
+      console.log("正在安装 rtk 运行时...");
+      console.log("默认版本: latest release");
+      console.log("支持版本写法: latest, v0.30.0, 0.30.0");
+      console.log("平台支持: macOS (x64/ARM64), Linux (x64/ARM64), Windows (x64)");
     }
 
     // 合并命令行参数和配置文件
@@ -168,6 +173,13 @@ async function main() {
           process.platform === "win32" ? "python.exe" : "bin/python3"
         )}`
       );
+    } else if (options.type === "rtk") {
+      console.log(
+        `rtk 可执行文件位置: ${path.join(
+          defaultDir,
+          process.platform === "win32" ? "rtk.exe" : "rtk"
+        )}`
+      );
     }
   } catch (error) {
     console.error("安装失败:", error);
@@ -194,6 +206,12 @@ program.on("--help", () => {
   console.log(
     "  $ tiny-runtime-injector --type python --runtime-version 3.12.8+20250117 --dir ./runtime/python"
   );
+  console.log(
+    "  $ tiny-runtime-injector --type rtk --dir ./runtime/rtk"
+  );
+  console.log(
+    "  $ tiny-runtime-injector --type rtk --runtime-version v0.30.0 --dir ./runtime/rtk"
+  );
   console.log("");
   console.log("支持的运行时:");
   console.log("  node     - Node.js JavaScript运行时");
@@ -201,6 +219,7 @@ program.on("--help", () => {
   console.log("  uv       - Python包管理器和解释器管理工具");
   console.log("  ripgrep  - 快速的文本搜索工具");
   console.log("  python   - Python 运行时环境");
+  console.log("  rtk      - rtk command line tool");
   console.log("");
 });
 

@@ -1,10 +1,10 @@
 # Tiny Runtime Injector
 
-A library that helps you download a complete, lightweight runtime environment for your project. It supports multiple modern runtimes, including Node.js, Bun, uv, ripgrep, and Python, making it ideal for bundling lightweight runtimes when building apps like Electron.
+A library that helps you download a complete, lightweight runtime environment for your project. It supports multiple modern runtimes, including Node.js, Bun, uv, ripgrep, Python, and rtk, making it ideal for bundling lightweight runtimes when building apps like Electron.
 
 ## Features
 
-- 🚀 Supports multiple runtimes: Node.js, Bun, uv, ripgrep, Python
+- 🚀 Supports multiple runtimes: Node.js, Bun, uv, ripgrep, Python, rtk
 - 📦 Automatically downloads and configures the latest versions
 - 🎯 Cross-platform support (Windows, macOS, Linux)
 - 🔧 Configurable cleanup options (Node.js)
@@ -20,6 +20,7 @@ A library that helps you download a complete, lightweight runtime environment fo
 | **uv**      | Python package manager and interpreter manager | 0.9.18          |
 | **ripgrep** | Fast text search tool (rg)                    | 14.1.1          |
 | **Python**  | Python runtime environment                    | 3.12.8+20250117 |
+| **rtk**     | rtk command line tool                         | latest release  |
 
 ## Installation
 
@@ -46,6 +47,12 @@ tiny-runtime-injector --type ripgrep --runtime-version 14.1.1 --dir ./runtime/ri
 
 # Install Python
 tiny-runtime-injector --type python --runtime-version 3.12.8+20250117 --dir ./runtime/python
+
+# Install rtk (latest release)
+tiny-runtime-injector --type rtk --dir ./runtime/rtk
+
+# Install rtk (explicit version)
+tiny-runtime-injector --type rtk --runtime-version v0.30.0 --dir ./runtime/rtk
 
 # Show all options
 tiny-runtime-injector --help
@@ -96,6 +103,13 @@ const pythonInjector = new RuntimeInjector({
   targetDir: "./runtime/python",
 });
 await pythonInjector.inject();
+
+// Install rtk (latest release)
+const rtkInjector = new RuntimeInjector({
+  type: "rtk",
+  targetDir: "./runtime/rtk",
+});
+await rtkInjector.inject();
 ```
 
 ## Configuration Options
@@ -104,7 +118,7 @@ await pythonInjector.inject();
 
 ```typescript
 interface RuntimeOptions {
-  type?: "node" | "bun" | "uv" | "ripgrep" | "python"; // Runtime type
+  type?: "node" | "bun" | "uv" | "ripgrep" | "python" | "rtk"; // Runtime type
   version?: string; // Version
   platform?: string; // Target platform
   arch?: string; // Target architecture
@@ -115,6 +129,8 @@ interface RuntimeOptions {
   noProxy?: string; // Hosts that bypass the proxy (same as NO_PROXY)
 }
 ```
+
+For `rtk`, omitting `version` defaults to the latest GitHub release. It also accepts `latest`, `0.30.0`, and `v0.30.0`.
 
 ### Cleanup Configuration (Node.js only)
 
@@ -170,11 +186,17 @@ async function setupRuntimes() {
     targetDir: path.join(runtimeDir, "ripgrep"),
   });
 
+  const rtkInjector = new RuntimeInjector({
+    type: "rtk",
+    targetDir: path.join(runtimeDir, "rtk"),
+  });
+
   await Promise.all([
     nodeInjector.inject(),
     bunInjector.inject(),
     uvInjector.inject(),
     rgInjector.inject(),
+    rtkInjector.inject(),
   ]);
 
   console.log("All runtimes are ready!");
@@ -266,6 +288,12 @@ tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy 
 - ⚠️ Note: Only x64 and ARM64 are supported for Linux (other architectures not supported)
 - ⚠️ Note: Windows x86 is not supported
 
+### rtk
+
+- ✅ Windows (x64)
+- ✅ macOS (x64, ARM64)
+- ✅ Linux (x64, ARM64)
+
 ## Runtime-Specific Notes
 
 ### Node.js
@@ -299,6 +327,13 @@ tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy 
 - Executable: `python.exe` (Windows) or `bin/python3` (Unix)
 - Version format: `{python_version}+{release_date}`, e.g., `3.12.8+20250117`
 ⚠️ Note: Only x64 and ARM64 architectures are supported
+
+### rtk
+
+- Single executable command line tool
+- Executable: `rtk.exe` (Windows) or `rtk` (Unix)
+- Version accepts `latest`, `0.30.0`, or `v0.30.0`
+- Omitting `version` resolves the latest GitHub release at install time
 
 ## API Reference
 
@@ -339,6 +374,8 @@ Downloads and sets up the specified runtime environment.
     - Bun: `v1.3.5`
     - uv: `0.9.18`
     - ripgrep: `14.1.1`
+    - Python: `3.12.8+20250117`
+    - rtk: `latest`, `0.30.0`, or `v0.30.0`
 
 ## Contributing
 

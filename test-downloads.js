@@ -86,6 +86,17 @@ const testConfigs = [
       { platform: 'linux', arch: 'x64' },
       { platform: 'linux', arch: 'arm64' },
     ]
+  },
+  // rtk configurations
+  {
+    type: 'rtk',
+    platforms: [
+      { platform: 'win32', arch: 'x64' },
+      { platform: 'darwin', arch: 'x64' },
+      { platform: 'darwin', arch: 'arm64' },
+      { platform: 'linux', arch: 'x64' },
+      { platform: 'linux', arch: 'arm64' },
+    ]
   }
 ];
 
@@ -386,6 +397,90 @@ const RIPGREP_PLATFORM = {
   'arm64-darwin': { target: 'aarch64-apple-darwin', ext: 'tar.gz' },
 };
 
+const RTK_PLATFORM = {
+  'x64-win32': { target: 'x86_64-pc-windows-msvc', ext: 'zip' },
+  'x64-linux': { target: 'x86_64-unknown-linux-musl', ext: 'tar.gz' },
+  'arm64-linux': { target: 'aarch64-unknown-linux-gnu', ext: 'tar.gz' },
+  'x64-darwin': { target: 'x86_64-apple-darwin', ext: 'tar.gz' },
+  'arm64-darwin': { target: 'aarch64-apple-darwin', ext: 'tar.gz' },
+};
+
+const RTK_SUPPORTED_PLATFORMS =
+  'darwin-x64, darwin-arm64, linux-x64, linux-arm64, win32-x64';
+const RTK_RELEASE_API = 'https://api.github.com/repos/rtk-ai/rtk/releases/latest';
+let latestRtkReleasePromise;
+
+function normalizeRtkVersion(version) {
+  if (!version || version === 'latest') {
+    return 'latest';
+  }
+
+  return version.startsWith('v') ? version : `v${version}`;
+}
+
+function getRtkPlatformConfig(platform, arch) {
+  const platformKey = `${String(arch)}-${platform}`;
+  const platformConfig = RTK_PLATFORM[platformKey];
+
+  if (platformConfig) {
+    return platformConfig;
+  }
+
+  throw new Error(
+    `Unsupported platform for rtk: ${platform}-${arch}. Supported targets: ${RTK_SUPPORTED_PLATFORMS}.`
+  );
+}
+
+function getRtkAssetName(platform, arch) {
+  const platformConfig = getRtkPlatformConfig(platform, arch);
+  return `rtk-${platformConfig.target}.${platformConfig.ext}`;
+}
+
+async function getLatestRtkRelease() {
+  if (!latestRtkReleasePromise) {
+    latestRtkReleasePromise = (async () => {
+      const proxyDecision = resolveProxyForUrl(RTK_RELEASE_API);
+      const response = await axios.get(RTK_RELEASE_API, {
+        headers: {
+          Accept: 'application/vnd.github+json',
+          'User-Agent': 'tiny-runtime-injector-tests',
+        },
+        timeout: 10000,
+        proxy: proxyDecision.proxy ?? false,
+      });
+
+      return {
+        tagName: normalizeRtkVersion(response.data.tag_name),
+        assets: (response.data.assets || []).map((asset) => asset.name),
+      };
+    })();
+  }
+
+  return latestRtkReleasePromise;
+}
+
+async function resolveVersion(type, platform, arch, version) {
+  if (type !== 'rtk') {
+    return version;
+  }
+
+  const normalizedVersion = normalizeRtkVersion(version);
+  if (normalizedVersion !== 'latest') {
+    return normalizedVersion;
+  }
+
+  const expectedAsset = getRtkAssetName(platform, arch);
+  const release = await getLatestRtkRelease();
+
+  if (!release.assets.includes(expectedAsset)) {
+    throw new Error(
+      `Latest rtk release ${release.tagName} does not include asset ${expectedAsset} for ${platform}-${arch}`
+    );
+  }
+
+  return release.tagName;
+}
+
 // 直接实现URL生成逻辑用于测试
 function generateDownloadUrl(type, platform, arch, version) {
   if (type === 'node') {
@@ -416,6 +511,9 @@ function generateDownloadUrl(type, platform, arch, version) {
     const pythonVersion = version.includes('+') ? version.split('+')[0] : version;
     const fileName = `cpython-${pythonVersion}+${releaseDate}-${platformTarget}-install_only.tar.gz`;
     return `https://github.com/astral-sh/python-build-standalone/releases/download/${releaseDate}/${fileName}`;
+  } else if (type === 'rtk') {
+    const fileName = getRtkAssetName(platform, arch);
+    return `https://github.com/rtk-ai/rtk/releases/download/${normalizeRtkVersion(version)}/${fileName}`;
   }
   throw new Error(`Unknown runtime type: ${type}`);
 }
@@ -565,7 +663,8 @@ async function validateDownloadUrl(type, platform, arch, version) {
   const testId = `${type}-${platform}-${arch}`;
   
   try {
-    const downloadUrl = generateDownloadUrl(type, platform, arch, version);
+    const resolvedVersion = await resolveVersion(type, platform, arch, version);
+    const downloadUrl = generateDownloadUrl(type, platform, arch, resolvedVersion);
     
     // 使用HEAD请求检查URL可访问性
     const result = await checkUrlAccessibility(downloadUrl, testId);
@@ -573,6 +672,7 @@ async function validateDownloadUrl(type, platform, arch, version) {
     return {
       testId,
       downloadUrl,
+      resolvedVersion,
       valid: result.success,
       status: result.status,
       error: result.error,
@@ -584,6 +684,37 @@ async function validateDownloadUrl(type, platform, arch, version) {
       testId, 
       error: error.message, 
       valid: false 
+    };
+  }
+}
+
+async function validateExpectedFailure(type, platform, arch, version, expectedMessage) {
+  const testId = `${type}-${platform}-${arch}-expected-error`;
+
+  try {
+    const resolvedVersion = await resolveVersion(type, platform, arch, version);
+    generateDownloadUrl(type, platform, arch, resolvedVersion);
+    log(`✗ ${testId} - Expected an error but URL generation succeeded`, 'red');
+    return {
+      testId,
+      valid: false,
+      error: 'Expected an error but URL generation succeeded',
+    };
+  } catch (error) {
+    if (error.message.includes(expectedMessage)) {
+      log(`✓ ${testId} - Expected error: ${error.message}`, 'green');
+      return {
+        testId,
+        valid: true,
+        status: 'expected-error',
+      };
+    }
+
+    log(`✗ ${testId} - Unexpected error: ${error.message}`, 'red');
+    return {
+      testId,
+      valid: false,
+      error: error.message,
     };
   }
 }
@@ -607,6 +738,15 @@ async function runUrlValidationTests() {
     const results = await Promise.all(promises);
     urlResults.push(...results);
   }
+
+  logSection('测试 RTK 额外版本场景');
+  const extraRtkChecks = await Promise.all([
+    validateDownloadUrl('rtk', 'win32', 'x64', 'v0.30.0'),
+    validateDownloadUrl('rtk', 'win32', 'x64', '0.30.0'),
+    validateExpectedFailure('rtk', 'win32', 'arm64', 'latest', 'Unsupported platform for rtk'),
+  ]);
+  totalChecked += extraRtkChecks.length;
+  urlResults.push(...extraRtkChecks);
   
   const validUrls = urlResults.filter(r => r.valid);
   const invalidUrls = urlResults.filter(r => !r.valid);
@@ -673,6 +813,7 @@ function getDefaultVersion(type) {
     uv: '0.9.18',
     ripgrep: '14.1.1',
     python: '3.12.12+20251217',
+    rtk: 'latest',
   };
   return defaultVersions[type];
 }

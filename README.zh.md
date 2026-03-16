@@ -1,10 +1,10 @@
 # Tiny Runtime Injector
 
-一个帮助您为项目下载完整、轻量级运行时环境的库。它支持多种现代运行时，包括 Node.js、Bun、uv 和 ripgrep，非常适合在构建 Electron 等应用程序时包含轻量级运行时。
+一个帮助您为项目下载完整、轻量级运行时环境的库。它支持多种现代运行时，包括 Node.js、Bun、uv、ripgrep、Python 和 rtk，非常适合在构建 Electron 等应用程序时包含轻量级运行时。
 
 ## 特性
 
-- 🚀 支持多种运行时：Node.js、Bun、uv、ripgrep
+- 🚀 支持多种运行时：Node.js、Bun、uv、ripgrep、Python、rtk
 - 📦 自动下载和配置最新版本
 - 🎯 跨平台支持 (Windows, macOS, Linux)
 - 🔧 可配置的清理选项（Node.js）
@@ -19,6 +19,8 @@
 | **Bun**     | 快速的 JavaScript 运行时和工具包 | v1.3.5  |
 | **uv**      | Python 包管理器和解释器管理工具  | 0.9.18   |
 | **ripgrep** | 快速的文本搜索工具 (rg)          | 14.1.1   |
+| **Python**  | Python 运行时环境                | 3.12.8+20250117 |
+| **rtk**     | rtk 命令行工具                   | latest release |
 
 ## 安装
 
@@ -42,6 +44,15 @@ tiny-runtime-injector --type uv --runtime-version 0.9.18 --dir ./runtime/uv
 
 # 安装 ripgrep
 tiny-runtime-injector --type ripgrep --runtime-version 14.1.1 --dir ./runtime/ripgrep
+
+# 安装 Python
+tiny-runtime-injector --type python --runtime-version 3.12.8+20250117 --dir ./runtime/python
+
+# 安装 rtk（最新 release）
+tiny-runtime-injector --type rtk --dir ./runtime/rtk
+
+# 安装 rtk（指定版本）
+tiny-runtime-injector --type rtk --runtime-version v0.30.0 --dir ./runtime/rtk
 
 # 查看所有选项
 tiny-runtime-injector --help
@@ -84,6 +95,21 @@ const rgInjector = new RuntimeInjector({
   targetDir: "./runtime/ripgrep",
 });
 await rgInjector.inject();
+
+// 安装 Python
+const pythonInjector = new RuntimeInjector({
+  type: "python",
+  version: "3.12.8+20250117",
+  targetDir: "./runtime/python",
+});
+await pythonInjector.inject();
+
+// 安装 rtk（最新 release）
+const rtkInjector = new RuntimeInjector({
+  type: "rtk",
+  targetDir: "./runtime/rtk",
+});
+await rtkInjector.inject();
 ```
 
 ## 配置选项
@@ -92,7 +118,7 @@ await rgInjector.inject();
 
 ```typescript
 interface RuntimeOptions {
-  type?: "node" | "bun" | "uv" | "ripgrep"; // 运行时类型
+  type?: "node" | "bun" | "uv" | "ripgrep" | "python" | "rtk"; // 运行时类型
   version?: string; // 版本号
   platform?: string; // 目标平台
   arch?: string; // 目标架构
@@ -103,6 +129,8 @@ interface RuntimeOptions {
   noProxy?: string; // 不走代理的主机列表 (同 NO_PROXY)
 }
 ```
+
+对于 `rtk`，省略 `version` 会默认安装 GitHub 最新 release，也支持 `latest`、`0.30.0` 和 `v0.30.0`。
 
 ### 清理配置（仅 Node.js）
 
@@ -158,11 +186,17 @@ async function setupRuntimes() {
     targetDir: path.join(runtimeDir, "ripgrep"),
   });
 
+  const rtkInjector = new RuntimeInjector({
+    type: "rtk",
+    targetDir: path.join(runtimeDir, "rtk"),
+  });
+
   await Promise.all([
     nodeInjector.inject(),
     bunInjector.inject(),
     uvInjector.inject(),
     rgInjector.inject(),
+    rtkInjector.inject(),
   ]);
 
   console.log("所有运行时设置完成！");
@@ -246,6 +280,20 @@ tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy 
 - ✅ macOS (x64, ARM64)
 - ✅ Linux (x64, ARM64)
 
+### Python
+
+- ✅ Windows (x64, ARM64)
+- ✅ macOS (x64, ARM64)
+- ✅ Linux (x64, ARM64)
+- ⚠️ 注意：Linux 仅支持 x64 和 ARM64
+- ⚠️ 注意：Windows x86 不受支持
+
+### rtk
+
+- ✅ Windows (x64)
+- ✅ macOS (x64, ARM64)
+- ✅ Linux (x64, ARM64)
+
 ## 运行时特定说明
 
 ### Node.js
@@ -271,6 +319,21 @@ tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy 
 
 - 单个可执行文件，用于快速文本搜索
 - 可执行文件：`rg.exe` (Windows) 或 `rg` (Unix)
+
+### Python
+
+- 来自 python-build-standalone 的自包含 Python 运行时
+- 包含 pip
+- 可执行文件：`python.exe` (Windows) 或 `bin/python3` (Unix)
+- 版本格式：`{python_version}+{release_date}`，例如 `3.12.8+20250117`
+- ⚠️ 仅支持 x64 和 ARM64
+
+### rtk
+
+- 单个可执行文件命令行工具
+- 可执行文件：`rtk.exe` (Windows) 或 `rtk` (Unix)
+- 版本支持 `latest`、`0.30.0`、`v0.30.0`
+- 省略 `version` 时会在安装时解析 GitHub 最新 release
 
 ## API 参考
 
@@ -311,6 +374,8 @@ async inject(): Promise<void>
     - Bun: `v1.3.5`
     - uv: `0.9.18`
     - ripgrep: `14.1.1`
+    - Python: `3.12.8+20250117`
+    - rtk: `latest`、`0.30.0` 或 `v0.30.0`
 
 ## 贡献
 
