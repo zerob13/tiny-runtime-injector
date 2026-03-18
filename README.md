@@ -131,6 +131,7 @@ interface RuntimeOptions {
 ```
 
 For `rtk`, omitting `version` defaults to the latest GitHub release. It also accepts `latest`, `0.30.0`, and `v0.30.0`.
+For `rtk` latest lookups in CI, set `GITHUB_TOKEN` (preferred) or `GH_TOKEN` to avoid GitHub API rate limits.
 
 ### Cleanup Configuration (Node.js only)
 
@@ -253,6 +254,32 @@ export NO_PROXY="localhost,127.0.0.1"
 tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy "localhost,127.0.0.1"
 ```
 
+## GitHub Authentication for rtk Latest
+
+When `type` is `rtk` and `version` is omitted or set to `latest`, `tiny-runtime-injector` resolves the latest release through the GitHub Releases API. Anonymous requests can hit GitHub rate limits in shared CI environments.
+
+Set `GITHUB_TOKEN` (preferred) or `GH_TOKEN` before running the installer:
+
+```bash
+export GITHUB_TOKEN="github_pat_xxx"
+tiny-runtime-injector --type rtk --dir ./runtime/rtk
+```
+
+Example for GitHub Actions:
+
+```yaml
+- name: Install rtk runtime
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  run: npx tiny-runtime-injector --type rtk --dir ./runtime/rtk
+```
+
+If you prefer to avoid the latest release lookup entirely, pin the version explicitly:
+
+```bash
+tiny-runtime-injector --type rtk --runtime-version v0.30.0 --dir ./runtime/rtk
+```
+
 ## Platform Support
 
 ### Node.js
@@ -334,6 +361,7 @@ tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy 
 - Executable: `rtk.exe` (Windows) or `rtk` (Unix)
 - Version accepts `latest`, `0.30.0`, or `v0.30.0`
 - Omitting `version` resolves the latest GitHub release at install time
+- `GITHUB_TOKEN` or `GH_TOKEN` can be used for authenticated latest release lookups in CI
 
 ## API Reference
 

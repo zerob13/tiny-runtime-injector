@@ -472,6 +472,8 @@ const PROXY_ENV_KEYS = {
   noProxy: ["NO_PROXY", "no_proxy"],
 } as const;
 
+const GITHUB_TOKEN_ENV_KEYS = ["GITHUB_TOKEN", "GH_TOKEN"] as const;
+
 type ProxyConfig = {
   protocol: string;
   host: string;
@@ -490,6 +492,69 @@ function getEnvValue(keys: readonly string[]): string | undefined {
     }
   }
   return undefined;
+}
+
+function getTrimmedEnvValue(keys: readonly string[]): string | undefined {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (!value) {
+      continue;
+    }
+
+    const trimmedValue = value.trim();
+    if (trimmedValue) {
+      return trimmedValue;
+    }
+  }
+
+  return undefined;
+}
+
+function getGitHubToken(): string | undefined {
+  return getTrimmedEnvValue(GITHUB_TOKEN_ENV_KEYS);
+}
+
+function getResponseMessage(data: unknown): string | undefined {
+  if (!data || typeof data !== "object") {
+    return undefined;
+  }
+
+  const message = (data as { message?: unknown }).message;
+  return typeof message === "string" ? message : undefined;
+}
+
+function createRtkReleaseLookupError(
+  error: unknown,
+  hasGitHubToken: boolean
+): Error {
+  if (axios.isAxiosError(error)) {
+    const responseMessage = getResponseMessage(error.response?.data) ?? error.message;
+    const hint = hasGitHubToken
+      ? "Check GITHUB_TOKEN or GH_TOKEN permissions/value, or pin a specific rtk version with --runtime-version to skip the latest release lookup."
+      : "Set GITHUB_TOKEN or GH_TOKEN in CI, or pin a specific rtk version with --runtime-version to skip the latest release lookup.";
+
+    if (error.response?.status === 401) {
+      return new Error(
+        `Failed to authenticate with GitHub while resolving the latest rtk release. ${hint} GitHub API response: ${responseMessage}`
+      );
+    }
+
+    if (error.response?.status === 403) {
+      const isRateLimitError = responseMessage.toLowerCase().includes("rate limit");
+      const prefix =
+        !hasGitHubToken && isRateLimitError
+          ? "GitHub API rate limit exceeded while resolving the latest rtk release."
+          : "GitHub API denied access while resolving the latest rtk release.";
+      return new Error(`${prefix} ${hint} GitHub API response: ${responseMessage}`);
+    }
+
+    return new Error(
+      `Failed to resolve the latest rtk release from GitHub. GitHub API response: ${responseMessage}`
+    );
+  }
+
+  const fallbackMessage = error instanceof Error ? error.message : String(error);
+  return new Error(`Failed to resolve the latest rtk release from GitHub. ${fallbackMessage}`);
 }
 
 function normalizeProxyUrl(proxyUrl: string, fallbackProtocol: string): string {
@@ -677,21 +742,32 @@ export class RuntimeInjector {
   }> {
     const releaseUrl = "https://api.github.com/repos/rtk-ai/rtk/releases/latest";
     const proxyConfig = this.getProxyConfigForUrl(releaseUrl);
-    const response = await axios.get<{
-      tag_name: string;
-      assets?: Array<{ name: string }>;
-    }>(releaseUrl, {
-      headers: {
-        Accept: "application/vnd.github+json",
-        "User-Agent": "tiny-runtime-injector",
-      },
-      proxy: proxyConfig ?? false,
-    });
-
-    return {
-      tagName: normalizeRtkVersion(response.data.tag_name),
-      assets: (response.data.assets ?? []).map((asset) => asset.name),
+    const githubToken = getGitHubToken();
+    const headers: Record<string, string> = {
+      Accept: "application/vnd.github+json",
+      "User-Agent": "tiny-runtime-injector",
     };
+
+    if (githubToken) {
+      headers.Authorization = `Bearer ${githubToken}`;
+    }
+
+    try {
+      const response = await axios.get<{
+        tag_name: string;
+        assets?: Array<{ name: string }>;
+      }>(releaseUrl, {
+        headers,
+        proxy: proxyConfig ?? false,
+      });
+
+      return {
+        tagName: normalizeRtkVersion(response.data.tag_name),
+        assets: (response.data.assets ?? []).map((asset) => asset.name),
+      };
+    } catch (error) {
+      throw createRtkReleaseLookupError(error, Boolean(githubToken));
+    }
   }
 
   private async resolveRtkVersion(): Promise<void> {

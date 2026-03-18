@@ -11,6 +11,7 @@
   "scripts": {
     "build": "tsc",
     "test": "node test-downloads.js",
+    "test:auth": "npm run build && node --test test/github-auth.test.js",
     "test:downloads": "npm run build && node test-downloads.js",
     "test:urls": "npm run build && node -e \"import('./test-downloads.js').then(m => m.runUrlValidationTests())\"",
     "prepare": "npm run build"

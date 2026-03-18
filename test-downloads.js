@@ -142,6 +142,8 @@ const PROXY_ENV_KEYS = {
   noProxy: ['NO_PROXY', 'no_proxy'],
 };
 
+const GITHUB_TOKEN_ENV_KEYS = ['GITHUB_TOKEN', 'GH_TOKEN'];
+
 function getEnvValue(keys) {
   for (const key of keys) {
     const value = process.env[key];
@@ -150,6 +152,64 @@ function getEnvValue(keys) {
     }
   }
   return undefined;
+}
+
+function getTrimmedEnvValue(keys) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (!value) {
+      continue;
+    }
+
+    const trimmedValue = value.trim();
+    if (trimmedValue) {
+      return trimmedValue;
+    }
+  }
+
+  return undefined;
+}
+
+function getGitHubToken() {
+  return getTrimmedEnvValue(GITHUB_TOKEN_ENV_KEYS);
+}
+
+function getResponseMessage(data) {
+  if (!data || typeof data !== 'object') {
+    return undefined;
+  }
+
+  return typeof data.message === 'string' ? data.message : undefined;
+}
+
+function createRtkReleaseLookupError(error, hasGitHubToken) {
+  if (axios.isAxiosError(error)) {
+    const responseMessage = getResponseMessage(error.response?.data) || error.message;
+    const hint = hasGitHubToken
+      ? 'Check GITHUB_TOKEN or GH_TOKEN permissions/value, or pin a specific rtk version with --runtime-version to skip the latest release lookup.'
+      : 'Set GITHUB_TOKEN or GH_TOKEN in CI, or pin a specific rtk version with --runtime-version to skip the latest release lookup.';
+
+    if (error.response?.status === 401) {
+      return new Error(
+        `Failed to authenticate with GitHub while resolving the latest rtk release. ${hint} GitHub API response: ${responseMessage}`
+      );
+    }
+
+    if (error.response?.status === 403) {
+      const isRateLimitError = responseMessage.toLowerCase().includes('rate limit');
+      const prefix = !hasGitHubToken && isRateLimitError
+        ? 'GitHub API rate limit exceeded while resolving the latest rtk release.'
+        : 'GitHub API denied access while resolving the latest rtk release.';
+      return new Error(`${prefix} ${hint} GitHub API response: ${responseMessage}`);
+    }
+
+    return new Error(
+      `Failed to resolve the latest rtk release from GitHub. GitHub API response: ${responseMessage}`
+    );
+  }
+
+  const fallbackMessage = error instanceof Error ? error.message : String(error);
+  return new Error(`Failed to resolve the latest rtk release from GitHub. ${fallbackMessage}`);
 }
 
 function normalizeProxyUrl(proxyUrl, fallbackProtocol) {
@@ -440,19 +500,30 @@ async function getLatestRtkRelease() {
   if (!latestRtkReleasePromise) {
     latestRtkReleasePromise = (async () => {
       const proxyDecision = resolveProxyForUrl(RTK_RELEASE_API);
-      const response = await axios.get(RTK_RELEASE_API, {
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'User-Agent': 'tiny-runtime-injector-tests',
-        },
-        timeout: 10000,
-        proxy: proxyDecision.proxy ?? false,
-      });
-
-      return {
-        tagName: normalizeRtkVersion(response.data.tag_name),
-        assets: (response.data.assets || []).map((asset) => asset.name),
+      const githubToken = getGitHubToken();
+      const headers = {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'tiny-runtime-injector-tests',
       };
+
+      if (githubToken) {
+        headers.Authorization = `Bearer ${githubToken}`;
+      }
+
+      try {
+        const response = await axios.get(RTK_RELEASE_API, {
+          headers,
+          timeout: 10000,
+          proxy: proxyDecision.proxy ?? false,
+        });
+
+        return {
+          tagName: normalizeRtkVersion(response.data.tag_name),
+          assets: (response.data.assets || []).map((asset) => asset.name),
+        };
+      } catch (error) {
+        throw createRtkReleaseLookupError(error, Boolean(githubToken));
+      }
     })();
   }
 

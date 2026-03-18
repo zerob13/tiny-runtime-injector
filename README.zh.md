@@ -131,6 +131,7 @@ interface RuntimeOptions {
 ```
 
 对于 `rtk`，省略 `version` 会默认安装 GitHub 最新 release，也支持 `latest`、`0.30.0` 和 `v0.30.0`。
+如果在 CI 中解析 `rtk` 的 latest，建议设置 `GITHUB_TOKEN`（优先）或 `GH_TOKEN`，以避免 GitHub API 限流。
 
 ### 清理配置（仅 Node.js）
 
@@ -253,6 +254,32 @@ export NO_PROXY="localhost,127.0.0.1"
 tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy "localhost,127.0.0.1"
 ```
 
+## rtk Latest 的 GitHub 认证
+
+当 `type` 为 `rtk` 且未指定 `version`，或 `version` 设为 `latest` 时，`tiny-runtime-injector` 会通过 GitHub Releases API 解析最新版本。在共享 CI 环境里，匿名请求很容易触发 GitHub 限流。
+
+运行前请设置 `GITHUB_TOKEN`（优先）或 `GH_TOKEN`：
+
+```bash
+export GITHUB_TOKEN="github_pat_xxx"
+tiny-runtime-injector --type rtk --dir ./runtime/rtk
+```
+
+GitHub Actions 示例：
+
+```yaml
+- name: Install rtk runtime
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  run: npx tiny-runtime-injector --type rtk --dir ./runtime/rtk
+```
+
+如果不想走 latest release 查询，也可以直接固定版本：
+
+```bash
+tiny-runtime-injector --type rtk --runtime-version v0.30.0 --dir ./runtime/rtk
+```
+
 ## 平台支持
 
 ### Node.js
@@ -334,6 +361,7 @@ tiny-runtime-injector --type node --http-proxy http://127.0.0.1:7890 --no-proxy 
 - 可执行文件：`rtk.exe` (Windows) 或 `rtk` (Unix)
 - 版本支持 `latest`、`0.30.0`、`v0.30.0`
 - 省略 `version` 时会在安装时解析 GitHub 最新 release
+- 在 CI 中可通过 `GITHUB_TOKEN` 或 `GH_TOKEN` 进行 latest release 认证查询
 
 ## API 参考
 
