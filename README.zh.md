@@ -415,6 +415,12 @@ MIT
 
 ## 更新日志
 
+### v1.2.0
+
+- ✨ 为 CI 中的 `rtk` latest release 解析增加 GitHub token 支持
+- 🧪 增加 GitHub release 认证与代理回归测试
+- 📝 补充 `rtk` 的 GitHub Actions 使用说明
+
 ### v1.0.0
 
 - ✨ 添加对 Bun 和 uv 的支持

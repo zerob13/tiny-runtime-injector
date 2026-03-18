@@ -415,6 +415,12 @@ MIT
 
 ## Changelog
 
+### v1.2.0
+
+- ✨ Add GitHub token support for `rtk` latest release lookups in CI
+- 🧪 Add auth and proxy regression tests for GitHub release resolution
+- 📝 Document GitHub Actions usage for `rtk`
+
 ### v1.0.0
 
 - ✨ Add support for Bun and uv

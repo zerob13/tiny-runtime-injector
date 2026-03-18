@@ -13,7 +13,7 @@ const __dirname = path.dirname(__filename);
 program
   .name("tiny-runtime-injector")
   .description("下载并配置最小化的运行时环境 (Node.js, Bun, uv, ripgrep, Python, rtk)")
-  .version("1.0.0")
+  .version("1.2.0")
   .option("-t, --type <type>", "运行时类型 (node, bun, uv, ripgrep, python, rtk)", "node")
   .option(
     "-r, --runtime-version <version>",
